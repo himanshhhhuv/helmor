@@ -107,7 +107,7 @@
   --color-app-foreground-soft: var(--color-neutral-300);
   --color-app-muted: var(--color-neutral-500);
   --color-app-tooltip: var(--color-neutral-800);
-  --color-app-done: var(--color-neutral-300);
+  --color-app-done: oklch(76% 0.05 72);
   --color-app-review: var(--color-success-400);
   --color-app-progress: var(--color-warning-400);
   --color-app-backlog: var(--color-neutral-500);

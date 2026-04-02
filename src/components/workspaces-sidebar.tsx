@@ -1,16 +1,17 @@
 import { cva } from "class-variance-authority";
 import {
+  IssueClosedIcon,
+  IssueDraftIcon,
+  XCircleFillIcon,
+} from "@primer/octicons-react";
+import {
   useState,
   type ButtonHTMLAttributes,
   type ReactNode,
 } from "react";
 import {
   Archive,
-  CheckCircle2,
   ChevronDown,
-  Circle,
-  CircleDashed,
-  CircleX,
   BookMarked,
   GitBranch,
   Plus,
@@ -172,20 +173,61 @@ function ToolbarButton({ label, className, children, ...props }: ToolbarButtonPr
   );
 }
 
+function PartialCircleIcon({
+  tone,
+  inset,
+  variant,
+}: {
+  tone: Extract<GroupTone, "review" | "progress">;
+  inset: number;
+  variant: "half-right" | "three-quarters";
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "relative block size-[14px] shrink-0 rounded-full border border-current",
+        groupToneClasses[tone],
+      )}
+    >
+      {variant === "half-right" ? (
+        <span
+          className="absolute rounded-r-full bg-current"
+          style={{
+            top: `${inset}px`,
+            right: `${inset}px`,
+            bottom: `${inset}px`,
+            width: "4px",
+          }}
+        />
+      ) : (
+        <span
+          className="absolute rounded-full bg-current"
+          style={{
+            inset: `${inset}px`,
+            clipPath: "polygon(50% 0%, 100% 0%, 100% 100%, 0% 100%, 0% 50%, 50% 50%)",
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
 function GroupIcon({ tone }: { tone: GroupTone }) {
-  const className = cn("size-[14px] shrink-0", groupToneClasses[tone]);
+  const className = cn("shrink-0", groupToneClasses[tone]);
+  const iconSize = 14;
 
   switch (tone) {
     case "done":
-      return <CheckCircle2 className={className} strokeWidth={1.9} />;
+      return <IssueClosedIcon className={className} size={iconSize} />;
     case "review":
-      return <CheckCircle2 className={className} strokeWidth={1.9} />;
+      return <PartialCircleIcon tone="review" inset={2.25} variant="three-quarters" />;
     case "progress":
-      return <Circle className={className} strokeWidth={2.2} />;
+      return <PartialCircleIcon tone="progress" inset={2.5} variant="half-right" />;
     case "backlog":
-      return <CircleDashed className={className} strokeWidth={1.8} />;
+      return <IssueDraftIcon className={className} size={iconSize} />;
     case "canceled":
-      return <CircleX className={className} strokeWidth={1.8} />;
+      return <XCircleFillIcon className={className} size={iconSize} />;
   }
 }
 

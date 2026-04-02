@@ -52,7 +52,7 @@ describe("App", () => {
     expect(sidebar).toHaveClass("bg-app-sidebar");
     expect(sidebar).toHaveStyle({ width: "288px" });
     expect(panel).toHaveClass("relative");
-    expect(panel).toHaveClass("bg-app-canvas");
+    expect(panel).toHaveClass("bg-app-elevated");
     expect(dragRegion).toHaveAttribute("data-tauri-drag-region");
     expect(viewport).toHaveClass("bg-app-elevated");
     expect(composer).toBeInTheDocument();
