@@ -9,7 +9,6 @@ import {
   CircleX,
   FilePlus2,
   GitBranch,
-  ListFilter,
   Plus,
 } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -173,7 +172,7 @@ function ToolbarButton({
       type="button"
       aria-label={label}
       className={cn(
-        "flex size-8 items-center justify-center rounded-lg text-app-foreground-soft/80 hover:bg-app-toolbar-hover hover:text-app-foreground",
+        "flex size-7 cursor-pointer items-center justify-center bg-transparent text-app-foreground-soft/72 transition-colors hover:bg-transparent hover:text-app-foreground focus-visible:text-app-foreground",
         className,
       )}
     >
@@ -278,17 +277,10 @@ export function WorkspacesSidebar() {
             Workspaces
           </h2>
 
-          <div className="flex items-center gap-1 text-app-foreground-soft/80">
-            <ToolbarButton label="Filter workspaces">
-              <ListFilter className="size-3.5" strokeWidth={1.9} />
-            </ToolbarButton>
-
+          <div className="flex items-center gap-2 text-app-foreground-soft/80">
             <Tooltip>
               <TooltipTrigger asChild>
-                <ToolbarButton
-                  label="Add repository"
-                  className="border border-app-border bg-app-sidebar-strong text-app-foreground"
-                >
+                <ToolbarButton label="Add repository" className="text-app-foreground-soft/78">
                   <FilePlus2 className="size-4" strokeWidth={1.9} />
                 </ToolbarButton>
               </TooltipTrigger>
