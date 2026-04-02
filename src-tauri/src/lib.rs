@@ -6,8 +6,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             conductor::get_conductor_fixture_info,
+            conductor::get_workspace,
             conductor::list_archived_workspaces,
-            conductor::list_workspace_groups
+            conductor::list_session_attachments,
+            conductor::list_session_messages,
+            conductor::list_workspace_groups,
+            conductor::list_workspace_sessions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

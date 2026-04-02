@@ -55,6 +55,92 @@ export type WorkspaceSummary = {
   attachmentCount?: number;
 };
 
+export type WorkspaceDetail = {
+  id: string;
+  title: string;
+  repoId: string;
+  repoName: string;
+  remoteUrl?: string | null;
+  defaultBranch?: string | null;
+  rootPath?: string | null;
+  directoryName: string;
+  state: string;
+  derivedStatus: string;
+  manualStatus?: string | null;
+  active: boolean;
+  activeSessionId?: string | null;
+  activeSessionTitle?: string | null;
+  activeSessionAgentType?: string | null;
+  activeSessionStatus?: string | null;
+  branch?: string | null;
+  initializationParentBranch?: string | null;
+  intendedTargetBranch?: string | null;
+  notes?: string | null;
+  pinnedAt?: string | null;
+  prTitle?: string | null;
+  prDescription?: string | null;
+  archiveCommit?: string | null;
+  sessionCount: number;
+  messageCount: number;
+  attachmentCount: number;
+};
+
+export type WorkspaceSessionSummary = {
+  id: string;
+  workspaceId: string;
+  title: string;
+  agentType?: string | null;
+  status: string;
+  model?: string | null;
+  permissionMode: string;
+  claudeSessionId?: string | null;
+  unreadCount: number;
+  contextTokenCount: number;
+  contextUsedPercent?: number | null;
+  thinkingEnabled: boolean;
+  codexThinkingLevel?: string | null;
+  fastMode: boolean;
+  agentPersonality?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastUserMessageAt?: string | null;
+  resumeSessionAt?: string | null;
+  isHidden: boolean;
+  isCompacting: boolean;
+  active: boolean;
+};
+
+export type SessionMessageRecord = {
+  id: string;
+  sessionId: string;
+  role: string;
+  content: string;
+  contentIsJson: boolean;
+  parsedContent?: unknown;
+  createdAt: string;
+  sentAt?: string | null;
+  cancelledAt?: string | null;
+  model?: string | null;
+  sdkMessageId?: string | null;
+  lastAssistantMessageId?: string | null;
+  turnId?: string | null;
+  isResumableMessage?: boolean | null;
+  attachmentCount: number;
+};
+
+export type SessionAttachmentRecord = {
+  id: string;
+  sessionId: string;
+  sessionMessageId?: string | null;
+  attachmentType?: string | null;
+  originalName?: string | null;
+  path?: string | null;
+  pathExists: boolean;
+  isLoading: boolean;
+  isDraft: boolean;
+  createdAt: string;
+};
+
 const DEFAULT_WORKSPACE_GROUPS: WorkspaceGroup[] = [
   {
     id: "done",
@@ -227,6 +313,76 @@ export async function loadArchivedWorkspaces(): Promise<WorkspaceSummary[]> {
     return await invoke<WorkspaceSummary[]>("list_archived_workspaces");
   } catch {
     return DEFAULT_ARCHIVED_WORKSPACES;
+  }
+}
+
+export async function loadWorkspaceDetail(
+  workspaceId: string,
+): Promise<WorkspaceDetail | null> {
+  const invoke = await getTauriInvoke();
+
+  if (!invoke) {
+    return null;
+  }
+
+  try {
+    return await invoke<WorkspaceDetail>("get_workspace", { workspaceId });
+  } catch {
+    return null;
+  }
+}
+
+export async function loadWorkspaceSessions(
+  workspaceId: string,
+): Promise<WorkspaceSessionSummary[]> {
+  const invoke = await getTauriInvoke();
+
+  if (!invoke) {
+    return [];
+  }
+
+  try {
+    return await invoke<WorkspaceSessionSummary[]>("list_workspace_sessions", {
+      workspaceId,
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function loadSessionMessages(
+  sessionId: string,
+): Promise<SessionMessageRecord[]> {
+  const invoke = await getTauriInvoke();
+
+  if (!invoke) {
+    return [];
+  }
+
+  try {
+    return await invoke<SessionMessageRecord[]>("list_session_messages", {
+      sessionId,
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function loadSessionAttachments(
+  sessionId: string,
+): Promise<SessionAttachmentRecord[]> {
+  const invoke = await getTauriInvoke();
+
+  if (!invoke) {
+    return [];
+  }
+
+  try {
+    return await invoke<SessionAttachmentRecord[]>("list_session_attachments", {
+      sessionId,
+    });
+  } catch {
+    return [];
   }
 }
 
