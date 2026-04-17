@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2
+
+### Patch Changes
+
+- [#91](https://github.com/dohooo/helmor/pull/91) [`8567d35`](https://github.com/dohooo/helmor/commit/8567d355d2be84fdeea68436c18be31fcd76ef0c) Thanks [@natllian](https://github.com/natllian)! - - Fix the empty model list in signed/notarized macOS release builds.
+
 ## 0.1.1
 
 ### Patch Changes
