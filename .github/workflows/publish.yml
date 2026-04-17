@@ -180,6 +180,11 @@ jobs:
           # mounting is flaky in the container. Force extract-and-run to
           # side-step the mount entirely — harmless on non-Linux runners.
           APPIMAGE_EXTRACT_AND_RUN: "1"
+          # Surface linuxdeploy / tauri-bundler diagnostic output so we can
+          # see the real stderr when the AppImage bundle step fails (the
+          # generic "failed to run linuxdeploy" message from tauri swallows
+          # subprocess stderr otherwise).
+          RUST_LOG: tauri_bundler=debug,tauri_cli=debug
         with:
           tagName: v__VERSION__
           releaseName: Helmor v__VERSION__
@@ -192,8 +197,9 @@ jobs:
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.tauri-args }}
-          # Force tauri-action to use bun instead of auto-detecting (it only knows npm/yarn/pnpm)
-          tauriScript: bun run tauri
+          # `-vv` (trace level) makes tauri-cli propagate subprocess stderr.
+          # Needed for AppImage debugging; harmless on mac/windows.
+          tauriScript: bun run tauri -vv
 
       - name: Cleanup macOS signing keychain
         if: always() && startsWith(matrix.platform, 'macos-')
