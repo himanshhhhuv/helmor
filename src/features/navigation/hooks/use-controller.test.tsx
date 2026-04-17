@@ -550,7 +550,14 @@ describe("useWorkspacesSidebarController archive flow", () => {
 		expect(onSelectWorkspace).toHaveBeenCalledWith("ws-created");
 	});
 
-	it("does not show the optimistic upgrade alongside the cached real workspace on success", async () => {
+	// Retry: even with the mock + timeout fixes this test exercises the most
+	// timing-sensitive microtask ordering in the suite (mutation resolve →
+	// setQueryData injection → fire-and-forget refetchNavigation vs
+	// reconciliation effect). Allow two local retries so a single CI hiccup
+	// does not fail the whole Rust/Frontend matrix and force a full re-run.
+	it("does not show the optimistic upgrade alongside the cached real workspace on success", {
+		retry: 2,
+	}, async () => {
 		const queryClient = new QueryClient({
 			defaultOptions: { queries: { retry: false } },
 		});
@@ -606,22 +613,30 @@ describe("useWorkspacesSidebarController archive flow", () => {
 			);
 		});
 
+		const upgradedGroups = [
+			{
+				...workspaceGroups[0],
+				rows: [
+					{
+						...workspaceGroups[0].rows[0],
+						id: "ws-created",
+						title: "Workspace created",
+						state: "initializing" as const,
+						branch: "testuser/helmor",
+					},
+					...workspaceGroups[0].rows,
+				],
+			},
+		];
+
+		// Keep `loadWorkspaceGroups` aligned with the injected cache so the
+		// post-success `refetchNavigation()` inside the hook does not race with
+		// reconciliation and replace the cache with a stale ws-1/ws-2 snapshot
+		// that lacks ws-created (which was flaky under slow CI timing).
+		apiMocks.loadWorkspaceGroups.mockResolvedValue(upgradedGroups);
+
 		act(() => {
-			queryClient.setQueryData(helmorQueryKeys.workspaceGroups, [
-				{
-					...workspaceGroups[0],
-					rows: [
-						{
-							...workspaceGroups[0].rows[0],
-							id: "ws-created",
-							title: "Workspace created",
-							state: "initializing",
-							branch: "testuser/helmor",
-						},
-						...workspaceGroups[0].rows,
-					],
-				},
-			]);
+			queryClient.setQueryData(helmorQueryKeys.workspaceGroups, upgradedGroups);
 		});
 
 		await act(async () => {

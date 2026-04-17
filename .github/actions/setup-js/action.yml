@@ -18,6 +18,23 @@ runs:
     - name: Install sccache
       uses: taiki-e/install-action@sccache
 
+    # Cache bun's package store and every node_modules produced by
+    # `bun install` + the sidecar postinstall. Biggest single win on
+    # Windows where Defender scans every small file written to
+    # node_modules and cold installs commonly take 2-4 minutes. Keyed
+    # on both lockfiles and this action so a toolchain bump auto-busts
+    # the cache.
+    - name: Cache bun install outputs
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.bun/install/cache
+          node_modules
+          sidecar/node_modules
+        key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock', 'sidecar/bun.lock', '.github/actions/setup-js/action.yml') }}
+        restore-keys: |
+          bun-install-${{ runner.os }}-
+
     - name: Install dependencies
       shell: bash
       run: bun install --frozen-lockfile

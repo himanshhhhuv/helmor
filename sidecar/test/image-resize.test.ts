@@ -60,6 +60,8 @@ describe("readImageWithResize baseline", () => {
 		await rm(dir, { recursive: true, force: true });
 	});
 
+	// 15s timeout: Windows CI can take >5s to spawn + fail magick.exe on a
+	// malformed PNG, and Bun's default 5000ms is too tight there.
 	test("oversized image triggers platform resize dispatcher and returns original on tool failure", async () => {
 		// Synthetic PNG with 3000×3000 header — parseDimensions reads the header
 		// and dispatches to sips/magick. Real tools will reject this malformed file,
@@ -76,5 +78,5 @@ describe("readImageWithResize baseline", () => {
 		expect(result.resized).toBe(false);
 
 		await rm(dir, { recursive: true, force: true });
-	});
+	}, 15000);
 });

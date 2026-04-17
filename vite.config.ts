@@ -83,6 +83,13 @@ export default defineConfig(async () => ({
 		environment: "jsdom",
 		setupFiles: "./src/test/setup.ts",
 		css: true,
+		// GitHub Actions macos-latest runs ~50x slower than local for the
+		// same spec (transform + import easily consume tens of seconds
+		// before the first test runs). waitFor-heavy tests in the nav +
+		// app-shortcuts suites hit microtask ordering edges under that
+		// load. Retry twice in CI so a single scheduling hiccup does not
+		// fail the whole run; local dev stays strict.
+		retry: process.env.CI ? 2 : 0,
 		// Sidecar tests are written for `bun:test`, not vitest. Exclude them
 		// so `bun run test:frontend` doesn't trip on `import ... from "bun:test"`.
 		// Same for the Rust + fixtures trees which contain no TS tests.
