@@ -197,21 +197,10 @@ fn is_archive_eligible_state(state: &str) -> bool {
 }
 
 /// Resolve the interpreter + single-command flag used to run the archive
-/// script. On Unix we respect `$SHELL` (falling back to `/bin/sh`) and use
-/// `-c`; on Windows we use `%COMSPEC%` (falling back to `cmd.exe`) and `/C`.
-/// Powershell would also work but `cmd /C` matches user expectation for
-/// single-line `archive_script` entries and has no startup latency.
+/// script. Respects `$SHELL` (falling back to `/bin/sh`) and uses `-c`.
 fn archive_shell() -> (String, &'static str) {
-    #[cfg(windows)]
-    {
-        let shell = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
-        (shell, "/C")
-    }
-    #[cfg(not(windows))]
-    {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-        (shell, "-c")
-    }
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+    (shell, "-c")
 }
 
 /// Structured outcome of a single archive-hook invocation. Returned by the
@@ -845,13 +834,9 @@ fn load_setup_script_from_project_config(workspace_dir: &Path) -> Result<Option<
 
 #[cfg(test)]
 mod tests {
-    //! Phase 0 baseline tests. Exercise the archive-hook outcome enum without
-    //! requiring a real workspace in the database: the WorkspaceMissing path is
-    //! the easiest to reach deterministically from a unit test.
-    //!
-    //! Phase 2's per-OS shell refactor must keep these passing; the shell
-    //! selection change in Phase 2 should add `#[cfg(windows)]`-gated tests
-    //! that exercise the Success path with `cmd.exe /C`.
+    //! Baseline archive-hook outcome tests. Exercise the enum without requiring
+    //! a real workspace in the database — the WorkspaceMissing path is the
+    //! easiest to reach deterministically from a unit test.
     use super::*;
 
     #[test]

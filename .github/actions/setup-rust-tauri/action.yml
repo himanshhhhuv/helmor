@@ -1,5 +1,5 @@
 name: Setup Rust Tauri
-description: Setup Rust toolchain, Rust cache, and per-OS system packages for Tauri builds
+description: Setup Rust toolchain and cache for macOS Tauri builds
 
 runs:
   using: composite
@@ -10,8 +10,7 @@ runs:
         echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
         # Incremental + sccache fight each other: incremental fingerprints
         # are host-local and invalidate sccache lookups, so sccache never
-        # hits. Disable incremental in CI only (actions/cache-via-this-env
-        # step persists this for subsequent steps in the same job).
+        # hits. Disable incremental in CI only.
         echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
 
     - name: Setup Rust toolchain
@@ -22,58 +21,18 @@ runs:
       with:
         cache-on-failure: true
         cache-workspace-crates: true
-        # Linux key pinned to ubuntu-22.04 (glibc 2.35 floor, matches
-        # publish-linux.yml). Earlier runs on ubuntu-latest (24.04 / glibc
-        # 2.39) poisoned the cache with build-script binaries that fail on
-        # 22.04 with `GLIBC_2.39 not found`. Bumping the key version flushes
-        # those artifacts.
-        shared-key: ${{ runner.os == 'Linux' && 'linux-tauri-u22-v1' || (runner.os == 'Windows' && 'windows-tauri-v1' || 'macos-tauri-v1') }}
+        shared-key: macos-tauri-v1
         workspaces: src-tauri -> target
 
-    # Persist sccache's default per-OS object cache. Complements
-    # Swatinem/rust-cache (which handles target/) by covering build
-    # scripts and any recompile that changes the Cargo fingerprint but
-    # leaves individual rustc invocations identical.
-    - name: Cache sccache objects (Linux)
-      if: runner.os == 'Linux'
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/sccache
-        # Suffix `-u22` so objects built on ubuntu-22.04 are never mixed
-        # with older ubuntu-latest caches (see rust-cache shared-key).
-        key: sccache-linux-u22-${{ hashFiles('src-tauri/Cargo.lock') }}
-        restore-keys: sccache-linux-u22-
-
-    - name: Cache sccache objects (macOS)
-      if: runner.os == 'macOS'
+    # Persist sccache's default object cache to complement rust-cache's
+    # target/ cache. Handles build scripts and recompiles where cargo's
+    # fingerprint changes but individual rustc invocations are identical.
+    - name: Cache sccache objects
       uses: actions/cache@v4
       with:
         path: ~/Library/Caches/Mozilla.sccache
         key: sccache-macos-${{ hashFiles('src-tauri/Cargo.lock') }}
         restore-keys: sccache-macos-
 
-    - name: Cache sccache objects (Windows)
-      if: runner.os == 'Windows'
-      uses: actions/cache@v4
-      with:
-        path: ~/AppData/Local/Mozilla/sccache/cache
-        key: sccache-windows-${{ hashFiles('src-tauri/Cargo.lock') }}
-        restore-keys: sccache-windows-
-
     - name: Install cargo-nextest
       uses: taiki-e/install-action@nextest
-
-    - name: Install Linux system packages
-      if: runner.os == 'Linux'
-      shell: bash
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          libayatana-appindicator3-dev \
-          librsvg2-dev \
-          libsoup-3.0-dev \
-          libwebkit2gtk-4.1-dev \
-          libgtk-3-dev \
-          libxdo-dev \
-          libfuse2 \
-          patchelf

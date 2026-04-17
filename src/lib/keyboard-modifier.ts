@@ -1,43 +1,30 @@
 /**
- * Cross-platform keyboard modifier helper.
- *
- * STRICT OS-aware binding: on macOS only Cmd (`event.metaKey`) counts,
- * on Windows / Linux only Ctrl (`event.ctrlKey`) counts. This preserves
- * the EXACT macOS shortcut behavior the app shipped with — Ctrl-based
- * combos that were ignored before (e.g. Ctrl+W, Ctrl+Option+Arrow) stay
- * ignored on macOS. Windows and Linux get Ctrl-based shortcuts that
- * previously didn't work.
- *
- * Rationale: loose binding (accept both) would have expanded the macOS
- * accept set (e.g. Cmd+Ctrl+W would newly trigger session close), which
- * is a behavior change even if no existing macOS convention uses that
- * combo. Strict OS-aware keeps macOS byte-identical.
+ * Keyboard modifier helpers. Helmor ships macOS-only, so "primary modifier"
+ * is always Cmd (`event.metaKey`) and "secondary" is always Ctrl
+ * (`event.ctrlKey`). Kept as small helpers so callers read intent instead
+ * of hardcoding `event.metaKey` everywhere.
  */
 
-import { isMac } from "./platform";
-
-/** Returns true if the event carries the host OS's primary modifier:
- *  Cmd on macOS, Ctrl on Windows / Linux. */
+/** Returns true if the event carries Cmd (the primary modifier on macOS). */
 export function isPrimaryModifier(
 	event: KeyboardEvent | { metaKey: boolean; ctrlKey: boolean },
 ): boolean {
-	return isMac() ? event.metaKey : event.ctrlKey;
+	return event.metaKey;
 }
 
-/** Returns true if the event carries the "wrong" modifier for the host OS:
- *  Ctrl on macOS, Win/Cmd on Windows / Linux. Used in strict shortcut
- *  checks to match the pre-Phase-3 macOS behavior where `event.ctrlKey`
- *  was an explicit reject signal on combos like Cmd+W / Cmd+Option+Arrow. */
+/** Returns true if the event carries Ctrl (the secondary modifier on macOS).
+ *  Used in strict shortcut checks where `event.ctrlKey` is an explicit
+ *  reject signal on combos like Cmd+W / Cmd+Option+Arrow. */
 export function hasSecondaryModifier(
 	event: KeyboardEvent | { metaKey: boolean; ctrlKey: boolean },
 ): boolean {
-	return isMac() ? event.ctrlKey : event.metaKey;
+	return event.ctrlKey;
 }
 
 /**
- * Returns true when the event is a bare primary modifier + the given key,
- * with NO extra modifiers (shift/alt). Use this for single-modifier shortcuts
- * like Cmd/Ctrl+K where shift/alt would normally pick a different command.
+ * Returns true when the event is a bare Cmd + the given key, with NO extra
+ * modifiers (shift/alt). Use this for single-modifier shortcuts like Cmd+K
+ * where shift/alt would normally pick a different command.
  */
 export function isExactPrimaryShortcut(
 	event: KeyboardEvent,

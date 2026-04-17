@@ -16,12 +16,12 @@ on:
         required: false
         default: "latest"
         type: string
-      # Platforms expected in latest.json. Default reflects the v1
-      # multi-platform shape once Windows + Linux ship.
+      # Platforms expected in latest.json. Helmor ships macOS-only, so we
+      # validate just the two darwin architectures.
       expected_platforms:
         description: "Comma-separated platform keys the manifest MUST contain"
         required: false
-        default: "darwin-aarch64,windows-x86_64,linux-x86_64"
+        default: "darwin-aarch64,darwin-x86_64"
         type: string
 
 permissions:

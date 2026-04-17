@@ -1,16 +1,10 @@
 name: Publish Release
 
-# Unified multi-platform publish. Matrix produces:
-#   - macOS aarch64 + x86_64 DMGs + .app.tar.gz updater artifacts
-#     (Intel support fixes the latent arm64-only DMG bug in publish-macos.yml)
-#   - Ubuntu 22.04 deb + rpm + AppImage (+ AppImage.tar.gz updater)
-#   - Windows x64 NSIS + MSI (+ .sig)
+# macOS-only publish. Matrix produces:
+#   - macOS aarch64 DMG + .app.tar.gz updater artifact
+#   - macOS x86_64 DMG + .app.tar.gz updater artifact
 # tauri-action@v0.6 merges each runner's per-platform entry into the same
 # latest.json on the release.
-#
-# The Phase 4 single-platform publish-{macos,linux,windows}.yml files still
-# exist as workflow_dispatch-only fallbacks — the push-tag trigger has been
-# removed from them so a tag push only fires THIS workflow.
 
 on:
   workflow_dispatch:
@@ -41,7 +35,7 @@ env:
 jobs:
   preflight:
     name: Release Preflight
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       release_body: ${{ steps.notes.outputs.release_body }}
@@ -100,29 +94,17 @@ jobs:
           fi
 
   build-and-publish:
-    name: Build and Publish (${{ matrix.platform }} ${{ matrix.target-triple }})
+    name: Build and Publish (${{ matrix.target-triple }})
     needs: preflight
     strategy:
       fail-fast: false
       matrix:
         include:
-          # macOS Apple Silicon
-          - platform: macos-latest
-            target-triple: aarch64-apple-darwin
+          - target-triple: aarch64-apple-darwin
             tauri-args: "--target aarch64-apple-darwin"
-          # macOS Intel — fixes the latent arm64-only DMG bug
-          - platform: macos-latest
-            target-triple: x86_64-apple-darwin
+          - target-triple: x86_64-apple-darwin
             tauri-args: "--target x86_64-apple-darwin"
-          # Linux x86_64
-          - platform: ubuntu-22.04
-            target-triple: x86_64-unknown-linux-gnu
-            tauri-args: ""
-          # Windows x86_64
-          - platform: windows-latest
-            target-triple: x86_64-pc-windows-msvc
-            tauri-args: ""
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -132,8 +114,8 @@ jobs:
       - name: Setup JS toolchain
         uses: ./.github/actions/setup-js
 
-      - name: Add Rust target for cross-arch macOS build
-        if: startsWith(matrix.platform, 'macos-') && matrix.target-triple == 'x86_64-apple-darwin'
+      - name: Add Rust target for Intel macOS cross-build
+        if: matrix.target-triple == 'x86_64-apple-darwin'
         shell: bash
         run: rustup target add x86_64-apple-darwin
 
@@ -146,7 +128,6 @@ jobs:
           target-triple: ${{ matrix.target-triple }}
 
       - name: Prepare macOS signing keychain
-        if: startsWith(matrix.platform, 'macos-')
         id: signing
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -162,7 +143,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0.6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Apple env is harmless on non-macOS runners (unreferenced).
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -175,34 +155,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           HELMOR_UPDATER_PUBKEY: ${{ secrets.HELMOR_UPDATER_PUBKEY }}
           HELMOR_UPDATER_ENDPOINTS: ${{ secrets.HELMOR_UPDATER_ENDPOINTS }}
-          # AppImage's bundled linuxdeploy would normally mount itself via
-          # FUSE. On ubuntu-22.04 the runner image has libfuse2 but FUSE
-          # mounting is flaky in the container. Force extract-and-run to
-          # side-step the mount entirely — harmless on non-Linux runners.
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-          # Surface linuxdeploy / tauri-bundler diagnostic output so we can
-          # see the real stderr when the AppImage bundle step fails (the
-          # generic "failed to run linuxdeploy" message from tauri swallows
-          # subprocess stderr otherwise).
-          RUST_LOG: tauri_bundler=debug,tauri_cli=debug
         with:
           tagName: v__VERSION__
           releaseName: Helmor v__VERSION__
           releaseBody: ${{ needs.preflight.outputs.release_body }}
           releaseDraft: ${{ needs.preflight.outputs.draft == 'true' }}
           prerelease: false
-          # tauri-action@v0.6 renamed `uploadUpdaterJson` to
-          # `includeUpdaterJson`; the old name is silently ignored and
-          # latest.json never gets appended.
           includeUpdaterJson: true
-          updaterJsonPreferNsis: true
           args: ${{ matrix.tauri-args }}
-          # `-vv` (trace level) makes tauri-cli propagate subprocess stderr.
-          # Needed for AppImage debugging; harmless on mac/windows.
-          tauriScript: bun run tauri -vv
+          # Force tauri-action to use bun instead of auto-detecting (it only knows npm/yarn/pnpm)
+          tauriScript: bun run tauri
 
       - name: Cleanup macOS signing keychain
-        if: always() && startsWith(matrix.platform, 'macos-')
+        if: always()
         run: |
           if [ -n "${{ steps.signing.outputs.APPLE_KEYCHAIN_PATH }}" ]; then
             scripts/cleanup-macos-signing.sh "${{ steps.signing.outputs.APPLE_KEYCHAIN_PATH }}"

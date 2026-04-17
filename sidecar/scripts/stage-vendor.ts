@@ -3,25 +3,22 @@
  * Tauri can bundle them as `bundle.resources` and ship them inside the
  * `.app` payload — no reliance on system-wide `claude` / `codex` installs.
  *
- * Layout produced (host platform only — cross-building requires re-running
- * `bun install` on the target host first):
+ * Layout produced (macOS host only):
  *
  *   dist/vendor/
  *     claude-code/
  *       cli.js
- *       vendor/ripgrep/<arch>/rg
- *       vendor/audio-capture/<arch>/audio-capture.node
- *       vendor/seccomp/<arch>/...           (Linux only)
+ *       vendor/ripgrep/<arch>-darwin/rg
+ *       vendor/audio-capture/<arch>-darwin/audio-capture.node
  *     codex/
- *       codex                               (or codex.exe on Windows)
+ *       codex
  *     bun/
- *       bun                                 (or bun.exe on Windows)
+ *       bun
  *
  * Invariants:
  *   - `cli.js` needs `vendor/` adjacent (Claude Code resolves its own
  *     ripgrep via `path.join(dirname(cli.js), "vendor", "ripgrep", ...)`).
- *   - Only the host-arch subdirs are copied; multi-platform .app bundles
- *     must be built on each target host separately.
+ *   - Only the host-arch subdirs are copied.
  *   - Re-runnable — wipes `dist/vendor/` before copying.
  *
  * Why bundle bun: the Claude Agent SDK spawns `cli.js` through a JS
@@ -50,73 +47,43 @@ const NODE_MODULES = join(SIDECAR_ROOT, "node_modules");
 const DIST_VENDOR = join(SIDECAR_ROOT, "dist", "vendor");
 
 // ---------------------------------------------------------------------------
-// Platform detection
+// Platform detection — macOS only, arch varies (arm64 / x64)
 // ---------------------------------------------------------------------------
 
-type NodePlatform = "darwin" | "linux" | "win32";
 type NodeArch = "arm64" | "x64";
 
 interface TargetInfo {
-	/** `@anthropic-ai/claude-code` uses `<arch>-<platform>` naming. */
+	/** `@anthropic-ai/claude-code` uses `<arch>-darwin` naming. */
 	ccVendorArch: string;
-	/** `@openai/codex-<platform>-<arch>` is the npm optional-dep package. */
+	/** `@openai/codex-darwin-<arch>` is the npm optional-dep package. */
 	codexPkg: string;
 	/** Target triple used as the subdir inside the codex platform package. */
 	codexTriple: string;
-	/** Executable filename inside the codex package. */
-	codexBin: string;
 }
 
 function detectTarget(): TargetInfo {
-	const platform = process.platform as NodePlatform;
+	if (process.platform !== "darwin") {
+		throw new Error(
+			`[stage-vendor] Helmor only builds on macOS; host platform is ${process.platform}`,
+		);
+	}
 	const arch = process.arch as NodeArch;
-	const key = `${platform}/${arch}`;
 
-	switch (key) {
-		case "darwin/arm64":
+	switch (arch) {
+		case "arm64":
 			return {
 				ccVendorArch: "arm64-darwin",
 				codexPkg: "@openai/codex-darwin-arm64",
 				codexTriple: "aarch64-apple-darwin",
-				codexBin: "codex",
 			};
-		case "darwin/x64":
+		case "x64":
 			return {
 				ccVendorArch: "x64-darwin",
 				codexPkg: "@openai/codex-darwin-x64",
 				codexTriple: "x86_64-apple-darwin",
-				codexBin: "codex",
-			};
-		case "linux/arm64":
-			return {
-				ccVendorArch: "arm64-linux",
-				codexPkg: "@openai/codex-linux-arm64",
-				codexTriple: "aarch64-unknown-linux-musl",
-				codexBin: "codex",
-			};
-		case "linux/x64":
-			return {
-				ccVendorArch: "x64-linux",
-				codexPkg: "@openai/codex-linux-x64",
-				codexTriple: "x86_64-unknown-linux-musl",
-				codexBin: "codex",
-			};
-		case "win32/arm64":
-			return {
-				ccVendorArch: "arm64-win32",
-				codexPkg: "@openai/codex-win32-arm64",
-				codexTriple: "aarch64-pc-windows-msvc",
-				codexBin: "codex.exe",
-			};
-		case "win32/x64":
-			return {
-				ccVendorArch: "x64-win32",
-				codexPkg: "@openai/codex-win32-x64",
-				codexTriple: "x86_64-pc-windows-msvc",
-				codexBin: "codex.exe",
 			};
 		default:
-			throw new Error(`Unsupported host platform/arch: ${key}`);
+			throw new Error(`[stage-vendor] Unsupported macOS arch: ${arch}`);
 	}
 }
 
@@ -162,8 +129,6 @@ function humanSize(path: string): string {
 }
 
 function maybeSignMacBinary(path: string): void {
-	if (process.platform !== "darwin") return;
-
 	const identity = process.env.APPLE_SIGNING_IDENTITY?.trim();
 	if (!identity) return;
 
@@ -192,7 +157,7 @@ function maybeSignMacBinary(path: string): void {
 const target = detectTarget();
 
 console.log(
-	`[stage-vendor] host=${process.platform}/${process.arch} ccArch=${target.ccVendorArch} codexPkg=${target.codexPkg}`,
+	`[stage-vendor] host=darwin/${process.arch} ccArch=${target.ccVendorArch} codexPkg=${target.codexPkg}`,
 );
 
 // Clean
@@ -216,14 +181,6 @@ for (const sub of ccVendorSubdirs) {
 		copyDir(from, join(ccDest, "vendor", sub, target.ccVendorArch));
 	}
 }
-// seccomp is Linux-only (the binary apply-seccomp filter).
-if (process.platform === "linux") {
-	const seccompArch = process.arch === "arm64" ? "arm64" : "x64";
-	const from = join(ccSrc, "vendor", "seccomp", seccompArch);
-	if (existsSync(from)) {
-		copyDir(from, join(ccDest, "vendor", "seccomp", seccompArch));
-	}
-}
 
 // ----- Codex -----
 const codexSrc = join(
@@ -232,26 +189,22 @@ const codexSrc = join(
 	"vendor",
 	target.codexTriple,
 	"codex",
-	target.codexBin,
+	"codex",
 );
 ensureExists(codexSrc, `${target.codexPkg} codex binary`);
 
-const codexDest = join(DIST_VENDOR, "codex", target.codexBin);
+const codexDest = join(DIST_VENDOR, "codex", "codex");
 copyFile(codexSrc, codexDest);
-// cpSync preserves mode on POSIX, but be defensive — the SDK just spawns
-// the path directly, so it has to be +x.
-if (process.platform !== "win32") {
-	chmodSync(codexDest, 0o755);
-}
+chmodSync(codexDest, 0o755);
 maybeSignMacBinary(codexDest);
 
 // ----- Bun (JS runtime for cli.js) -----
 function locateHostBun(): string {
 	try {
-		const cmd = process.platform === "win32" ? "where bun" : "which bun";
-		const raw = execSync(cmd, { encoding: "utf8" }).trim().split("\n")[0] ?? "";
+		const raw =
+			execSync("which bun", { encoding: "utf8" }).trim().split("\n")[0] ?? "";
 		if (!raw) throw new Error("empty output");
-		// Homebrew ships bun as a symlink; resolve to the real ELF/Mach-O.
+		// Homebrew ships bun as a symlink; resolve to the real Mach-O.
 		return realpathSync(raw);
 	} catch {
 		throw new Error(
@@ -263,28 +216,23 @@ function locateHostBun(): string {
 }
 
 const bunSrc = locateHostBun();
-const bunBin = process.platform === "win32" ? "bun.exe" : "bun";
-const bunDest = join(DIST_VENDOR, "bun", bunBin);
+const bunDest = join(DIST_VENDOR, "bun", "bun");
 copyFile(bunSrc, bunDest);
-if (process.platform !== "win32") {
-	chmodSync(bunDest, 0o755);
-}
+chmodSync(bunDest, 0o755);
 maybeSignMacBinary(bunDest);
 
-if (process.platform === "darwin") {
-	for (const rel of [
-		join(ccDest, "vendor", "ripgrep", target.ccVendorArch, "rg"),
-		join(
-			ccDest,
-			"vendor",
-			"audio-capture",
-			target.ccVendorArch,
-			"audio-capture.node",
-		),
-	]) {
-		if (existsSync(rel)) {
-			maybeSignMacBinary(rel);
-		}
+for (const rel of [
+	join(ccDest, "vendor", "ripgrep", target.ccVendorArch, "rg"),
+	join(
+		ccDest,
+		"vendor",
+		"audio-capture",
+		target.ccVendorArch,
+		"audio-capture.node",
+	),
+]) {
+	if (existsSync(rel)) {
+		maybeSignMacBinary(rel);
 	}
 }
 

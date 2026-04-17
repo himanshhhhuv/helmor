@@ -1,9 +1,7 @@
 name: Quality
 
-# Lint + typecheck run on macOS only (the primary target). Windows and
-# Linux get a compile-only gate (`cargo check --lib`) so source-level
-# cross-platform regressions still fail CI — but no unit tests, no
-# clippy, no lint run outside macOS.
+# Lint + typecheck run on macOS. Helmor is macOS-only; Windows and Linux
+# quality gates were removed when we dropped cross-platform support.
 
 on:
   pull_request:
@@ -58,57 +56,3 @@ jobs:
 
       - name: Run typecheck
         run: bun run typecheck
-
-  # Windows compile-only gate. Verifies src-tauri/ still builds for the
-  # Windows target — catches cfg(unix)-only usage, API drift, and other
-  # source regressions without spending a full test matrix on it.
-  rust-check-windows:
-    name: Rust Windows Check
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup JS toolchain
-        uses: ./.github/actions/setup-js
-
-      - name: Setup Rust Tauri
-        uses: ./.github/actions/setup-rust-tauri
-
-      - name: Build + stage sidecar (Windows)
-        uses: ./.github/actions/build-sidecar
-        with:
-          target-triple: x86_64-pc-windows-msvc
-
-      - name: cargo check for x86_64-pc-windows-msvc
-        shell: bash
-        working-directory: src-tauri
-        run: cargo check --lib --target x86_64-pc-windows-msvc
-
-  # Linux compile-only gate. Same purpose as the Windows check — just
-  # verifies src-tauri/ compiles for x86_64-unknown-linux-gnu. Runs in
-  # ubuntu-22.04 to match publish-linux.yml's glibc floor.
-  rust-check-linux:
-    name: Rust Linux Check
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup JS toolchain
-        uses: ./.github/actions/setup-js
-
-      - name: Setup Rust Tauri
-        uses: ./.github/actions/setup-rust-tauri
-
-      - name: Build + stage sidecar (Linux)
-        uses: ./.github/actions/build-sidecar
-        with:
-          target-triple: x86_64-unknown-linux-gnu
-
-      - name: cargo check for x86_64-unknown-linux-gnu
-        shell: bash
-        working-directory: src-tauri
-        run: cargo check --lib --target x86_64-unknown-linux-gnu

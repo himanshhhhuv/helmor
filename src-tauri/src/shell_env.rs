@@ -8,9 +8,6 @@
 //! spawns a one-shot login shell, captures its `env` output, and merges
 //! the interesting variables into the current process so every child
 //! (sidecar, git, workspace scripts) inherits them automatically.
-//!
-//! **Unix-only.** On Windows the GUI process already inherits the full
-//! user environment — this module compiles to a no-op there.
 
 /// Merge the user's login-shell environment into the current process.
 ///
@@ -18,11 +15,9 @@
 /// spawned. It is intentionally infallible — on failure it logs and
 /// returns, leaving the existing (minimal) environment in place.
 pub fn inherit_login_shell_env() {
-    #[cfg(unix)]
     unix::inherit();
 }
 
-#[cfg(unix)]
 mod unix {
     use std::collections::HashMap;
     use std::process::Command;

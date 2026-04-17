@@ -286,7 +286,6 @@ pub fn copy_dir_all(source: &Path, destination: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
 pub fn copy_symlink(source: &Path, destination: &Path) -> Result<()> {
     use std::os::unix::fs::symlink;
 
@@ -308,28 +307,6 @@ pub fn copy_symlink(source: &Path, destination: &Path) -> Result<()> {
             destination.display()
         )
     })
-}
-
-#[cfg(not(unix))]
-pub fn copy_symlink(source: &Path, destination: &Path) -> Result<()> {
-    // Windows: creating symbolic links requires either admin privileges or
-    // Developer Mode. Rather than fail the whole workspace copy, fall back
-    // to dereferencing the symlink and copying its contents. The caller's
-    // semantics change silently (the copy is no longer a live alias of the
-    // source), so make this visible via a structured warn log.
-    let target = fs::read_link(source)
-        .with_context(|| format!("Failed to read symlink {}", source.display()))?;
-    let resolved = source
-        .parent()
-        .unwrap_or_else(|| Path::new(""))
-        .join(&target);
-    tracing::warn!(
-        source = %source.display(),
-        destination = %destination.display(),
-        link_target = %target.display(),
-        "symlink-as-copy fallback (Windows): copying dereferenced contents; symlink semantics are dropped"
-    );
-    copy_dir_all(&resolved, destination)
 }
 
 // ---- Workspace scaffolding helpers ----

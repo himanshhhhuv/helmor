@@ -126,11 +126,8 @@ where
     );
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
+    use std::os::unix::process::CommandExt;
+    command.process_group(0);
 
     let child = command.spawn().context("Failed to spawn git")?;
     let child_pid = child.id();
@@ -165,19 +162,12 @@ where
             // thread until git decided to give up on its own. Using the
             // negative PGID (== child PID because we set process_group(0)
             // at spawn) ensures child processes like ssh are also killed.
-            #[cfg(unix)]
+            //
             // SAFETY: `child_pid` == PGID (we set process_group(0) at
             // spawn). Negative PID targets the whole group. If the group
             // has already exited, `libc::kill` returns ESRCH harmlessly.
             unsafe {
                 libc::kill(-(child_pid as libc::pid_t), libc::SIGKILL);
-            }
-            #[cfg(not(unix))]
-            {
-                // No portable PGID kill on Windows. The waiter will
-                // exit eventually when the child does — accept the leak
-                // for now (Helmor's primary target is macOS).
-                let _ = child_pid;
             }
             let _ = waiter.join();
             bail!(

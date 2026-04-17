@@ -6,11 +6,7 @@
  * plumbing and notification/request callbacks.
  */
 
-import {
-	type ChildProcessWithoutNullStreams,
-	spawn,
-	spawnSync,
-} from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import readline from "node:readline";
 import { logger } from "./logger.js";
 
@@ -81,7 +77,6 @@ export class CodexAppServer {
 		this.child = spawn(opts.binaryPath, ["app-server"], {
 			cwd: opts.cwd,
 			stdio: ["pipe", "pipe", "pipe"],
-			shell: process.platform === "win32",
 		});
 
 		this.output = readline.createInterface({ input: this.child.stdout });
@@ -244,15 +239,5 @@ function isResponse(msg: Record<string, unknown>): boolean {
 }
 
 function killChildProcess(child: ChildProcessWithoutNullStreams): void {
-	if (process.platform === "win32" && child.pid !== undefined) {
-		try {
-			spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
-				stdio: "ignore",
-			});
-			return;
-		} catch {
-			// fall through
-		}
-	}
 	child.kill();
 }

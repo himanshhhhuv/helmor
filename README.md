@@ -17,9 +17,7 @@
   <img src="src/assets/helmor-screenshot-mix.png" alt="Helmor screenshot" width="100%" />
 </p>
 
-[**Download for macOS, Windows &amp; Linux** →](https://github.com/dohooo/helmor/releases)
-
-<sub>_macOS (stable) · Windows &amp; Linux (alpha) — vibe-coded, never tested. PRs welcome._</sub>
+[**Download for macOS** →](https://github.com/dohooo/helmor/releases)
 
 ## Contributing
 

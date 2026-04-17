@@ -1,10 +1,7 @@
 /**
- * Phase 0 baseline tests for the image-resize platform dispatcher.
- *
- * These lock in the current behavior so Phase 3's Windows branch cannot
- * regress darwin / linux paths. The tests exercise only the exported code
- * surface (`readImageWithResize`) by poking `process.platform` and feeding
- * images that trigger the resize code path (dimensions > 2000px).
+ * Baseline tests for `readImageWithResize`. Helmor ships macOS-only so
+ * the single resize path here is `sips`; the tests only need to confirm
+ * graceful behavior (pass-through on small / unrecognized / tool-failure).
  */
 
 import { describe, expect, test } from "bun:test";
@@ -60,23 +57,21 @@ describe("readImageWithResize baseline", () => {
 		await rm(dir, { recursive: true, force: true });
 	});
 
-	// 15s timeout: Windows CI can take >5s to spawn + fail magick.exe on a
-	// malformed PNG, and Bun's default 5000ms is too tight there.
-	test("oversized image triggers platform resize dispatcher and returns original on tool failure", async () => {
+	test("oversized image triggers resize and returns original on tool failure", async () => {
 		// Synthetic PNG with 3000×3000 header — parseDimensions reads the header
-		// and dispatches to sips/magick. Real tools will reject this malformed file,
-		// so the code must fall back to returning the original buffer.
+		// and dispatches to sips. The malformed file will be rejected, so the
+		// code must fall back to returning the original buffer.
 		const dir = await mkdtemp(join(tmpdir(), "helmor-img-test-"));
 		const path = join(dir, "huge.png");
 		const png = makePng(3000, 3000);
 		await writeFile(path, png);
 
 		const result = await readImageWithResize(path);
-		// Regardless of platform, graceful fallback must return the original.
+		// Graceful fallback must return the original.
 		expect(result.buffer.equals(png)).toBe(true);
 		// resized === false because the tool failed.
 		expect(result.resized).toBe(false);
 
 		await rm(dir, { recursive: true, force: true });
-	}, 15000);
+	});
 });

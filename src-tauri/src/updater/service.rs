@@ -185,7 +185,6 @@ pub async fn install_downloaded_update<R: Runtime>(app: AppHandle<R>) -> UpdateS
 
     match pending.update.install(&pending.bytes) {
         Ok(()) => {
-            #[cfg(not(target_os = "windows"))]
             app.request_restart();
 
             UpdateStatusSnapshot {

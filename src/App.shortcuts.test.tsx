@@ -31,16 +31,11 @@ vi.mock("./App.css", () => ({}));
 vi.mock("@tauri-apps/plugin-dialog", () => ({
 	open: vi.fn(),
 }));
-// The shortcut suite is written against macOS conventions (metaKey = Cmd).
-// jsdom's default userAgent is Linux, so without this mock `isMac()` would
-// return false and the strict OS-aware isPrimaryModifier would expect
-// ctrlKey instead. Forcing platform="mac" here keeps the test intent
-// explicit: exercise the macOS shortcut path.
+// Helmor is macOS-only; `./lib/platform` already returns `isMac: () => true`
+// unconditionally. No mock needed, but keep this vi.mock stub to document the
+// shortcut suite's dependency on that assumption.
 vi.mock("./lib/platform", () => ({
-	getPlatform: () => "mac",
 	isMac: () => true,
-	isWindows: () => false,
-	isLinux: () => false,
 }));
 vi.mock("@tauri-apps/api/window", () => ({
 	getCurrentWindow: () => ({

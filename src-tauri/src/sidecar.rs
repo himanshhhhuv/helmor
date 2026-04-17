@@ -93,11 +93,8 @@ impl SidecarProcess {
         // Put the sidecar in its own process group so SIGTERM/SIGKILL
         // reaches all child processes (Claude CLI, Codex CLI) instead
         // of only hitting the Bun parent.
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            cmd.process_group(0);
-        }
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
 
         // Pass log config to the sidecar process
         if let Ok(dir) = crate::data_dir::logs_dir() {
@@ -183,11 +180,9 @@ impl SidecarProcess {
 
     /// Force-kill (SIGKILL) the sidecar and its entire process group.
     /// Last-resort cleanup; the cooperative shutdown ladder lives in
-    /// `ManagedSidecar::shutdown`.
+    /// `ManagedSidecar::shutdown`. Kill the whole process group first so
+    /// child CLIs don't get reparented to launchd as orphans.
     fn kill(&mut self) {
-        // On Unix, kill the whole process group first so child CLIs
-        // don't get reparented to launchd as orphans.
-        #[cfg(unix)]
         unsafe {
             libc::kill(-(self.pid() as libc::pid_t), libc::SIGKILL);
         }
@@ -213,22 +208,15 @@ impl SidecarProcess {
         }
     }
 
-    /// Send SIGTERM to the sidecar's process group. Unix only; on other
-    /// platforms this is a no-op (the SIGKILL fallback in `kill()` still
-    /// applies). Targeting the group (negative PID) ensures child CLIs
-    /// spawned by Bun also receive the signal.
-    #[cfg(unix)]
+    /// Send SIGTERM to the sidecar's process group. Targeting the group
+    /// (negative PID) ensures child CLIs spawned by Bun also receive the
+    /// signal.
     fn send_sigterm(&self) {
         // SAFETY: `pid()` is the live child's PID (== PGID since we set
         // process_group(0) at spawn). Negative PID targets the whole group.
         unsafe {
             libc::kill(-(self.pid() as libc::pid_t), libc::SIGTERM);
         }
-    }
-
-    #[cfg(not(unix))]
-    fn send_sigterm(&self) {
-        // No portable SIGTERM equivalent on Windows; fall through to kill().
     }
 }
 
