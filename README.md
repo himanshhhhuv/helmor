@@ -1,9 +1,5 @@
 <p align="center">
-  <img src="src/assets/helmor-banner.webp" alt="Helmor" width="100%" />
-</p>
-
-<p align="center">
-  <img src="src/assets/helmor-logo.png" width="96" height="96" alt="Helmor" />
+  <img src="src/assets/readme-banner.png" alt="Helmor" width="100%" />
 </p>
 
 <h1 align="center">Helmor</h1>
