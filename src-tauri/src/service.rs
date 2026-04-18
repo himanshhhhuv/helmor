@@ -282,13 +282,22 @@ pub fn send_message(
     let mut resolved_session_id: Option<String> = None;
 
     for event in rx.iter() {
-        if let Some(sid) = event.session_id() {
-            if resolved_session_id.is_none() {
-                resolved_session_id = Some(sid.to_string());
-                let _ = conn.execute(
-                    "UPDATE sessions SET provider_session_id = ?2, agent_type = ?3 WHERE id = ?1",
-                    params![session_id, sid, model.provider],
-                );
+        // Match streaming.rs: only Claude's `system.init` carries an
+        // authoritative session_id. SessionStart hook events emit a stale
+        // session_id that would poison the next resume.
+        let is_provider_session_marker = match model.provider.as_str() {
+            "claude" => event.is_claude_session_init(),
+            _ => true,
+        };
+        if is_provider_session_marker {
+            if let Some(sid) = event.session_id() {
+                if resolved_session_id.is_none() {
+                    resolved_session_id = Some(sid.to_string());
+                    let _ = conn.execute(
+                        "UPDATE sessions SET provider_session_id = ?2, agent_type = ?3 WHERE id = ?1",
+                        params![session_id, sid, model.provider],
+                    );
+                }
             }
         }
 

@@ -56,6 +56,15 @@ impl SidecarEvent {
     pub fn session_id(&self) -> Option<&str> {
         self.raw.get("session_id")?.as_str()
     }
+
+    /// Claude SDK emits `system.init` to announce the authoritative session
+    /// id for the current turn. Earlier events (e.g. `SessionStart:resume`
+    /// hook events) carry a transient `session_id` that does NOT map to any
+    /// real conversation jsonl — persisting it would poison the next resume.
+    pub fn is_claude_session_init(&self) -> bool {
+        self.raw.get("type").and_then(Value::as_str) == Some("system")
+            && self.raw.get("subtype").and_then(Value::as_str) == Some("init")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -632,6 +641,57 @@ mod tests {
         assert_eq!(event.id(), None);
         assert_eq!(event.event_type(), "unknown");
         assert_eq!(event.session_id(), None);
+    }
+
+    #[test]
+    fn is_claude_session_init_rejects_hook_events() {
+        // Regression: SessionStart:resume hook notifications fire before
+        // system.init with a transient session_id that does NOT map to any
+        // real conversation jsonl. Capturing it poisons the next resume.
+        let hook_started = SidecarEvent {
+            raw: serde_json::json!({
+                "type": "system",
+                "subtype": "hook_started",
+                "hook_name": "SessionStart:resume",
+                "session_id": "02ad5522-df10-4180-aef4-c17489f42ec2",
+            }),
+        };
+        assert!(!hook_started.is_claude_session_init());
+
+        let hook_response = SidecarEvent {
+            raw: serde_json::json!({
+                "type": "system",
+                "subtype": "hook_response",
+                "session_id": "02ad5522-df10-4180-aef4-c17489f42ec2",
+            }),
+        };
+        assert!(!hook_response.is_claude_session_init());
+
+        let status = SidecarEvent {
+            raw: serde_json::json!({
+                "type": "system",
+                "subtype": "status",
+                "session_id": "152f1faa-85bf-40dd-aae3-0a3aa8d9abfa",
+            }),
+        };
+        assert!(!status.is_claude_session_init());
+
+        let assistant = SidecarEvent {
+            raw: serde_json::json!({
+                "type": "assistant",
+                "session_id": "152f1faa-85bf-40dd-aae3-0a3aa8d9abfa",
+            }),
+        };
+        assert!(!assistant.is_claude_session_init());
+
+        let init = SidecarEvent {
+            raw: serde_json::json!({
+                "type": "system",
+                "subtype": "init",
+                "session_id": "152f1faa-85bf-40dd-aae3-0a3aa8d9abfa",
+            }),
+        };
+        assert!(init.is_claude_session_init());
     }
 
     #[test]

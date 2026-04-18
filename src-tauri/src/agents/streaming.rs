@@ -250,6 +250,16 @@ pub fn convert_elicitation_content_to_codex_answers(content: &Value) -> Value {
     Value::Object(answers)
 }
 
+fn should_adopt_provider_session_id(
+    current_provider_session_id: Option<&str>,
+    observed_provider_session_id: &str,
+    helmor_session_id: Option<&str>,
+) -> bool {
+    !observed_provider_session_id.is_empty()
+        && helmor_session_id != Some(observed_provider_session_id)
+        && current_provider_session_id.is_none()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn stream_via_sidecar(
     app: AppHandle,
@@ -349,7 +359,7 @@ pub(super) fn stream_via_sidecar(
     tauri::async_runtime::spawn_blocking(move || {
         let sidecar_state: tauri::State<'_, crate::sidecar::ManagedSidecar> = app.state();
         let active_streams_state: tauri::State<'_, ActiveStreams> = app.state();
-        let mut resolved_session_id: Option<String> = None;
+        let mut resolved_session_id: Option<String> = resume_session_id.clone();
         let context_key = rid.clone();
         let pipeline_session_id = hsid_copy.clone().unwrap_or_else(|| context_key.clone());
         let mut pipeline = hsid_copy.as_ref().map(|_| {
@@ -411,23 +421,39 @@ pub(super) fn stream_via_sidecar(
         for event in rx.iter() {
             event_count += 1;
 
-            if let Some(sid) = event.session_id() {
-                if resolved_session_id.is_none() {
-                    resolved_session_id = Some(sid.to_string());
-                    if resume_only {
-                        tracing::debug!(
-                            rid = %rid,
-                            provider_session_id = sid,
-                            "Skipping provider session persistence for resume-only stream"
-                        );
-                    } else if let (Some(ctx), Some(conn)) = (&exchange_ctx, &db_conn) {
-                        if let Err(error) = conn.execute(
-                            "UPDATE sessions SET provider_session_id = ?2, agent_type = ?3 WHERE id = ?1",
-                            params![ctx.helmor_session_id, sid, ctx.model_provider],
-                        ) {
-                            tracing::error!(rid = %rid, "Failed to persist session id: {error}");
-                        } else {
-                            tracing::debug!(rid = %rid, provider_session_id = sid, "Session ID persisted");
+            // Claude's authoritative session_id comes only from `system.init`.
+            // Earlier events — notably SessionStart:resume hook notifications —
+            // carry a transient session_id that does NOT map to any real
+            // conversation jsonl. Adopting them poisons the next resume with
+            // "No conversation found". Codex flattens every notification with
+            // its real thread_id, so any event is safe.
+            let is_provider_session_marker = match model_copy.provider.as_str() {
+                "claude" => event.is_claude_session_init(),
+                _ => true,
+            };
+            if is_provider_session_marker {
+                if let Some(sid) = event.session_id() {
+                    if should_adopt_provider_session_id(
+                        resolved_session_id.as_deref(),
+                        sid,
+                        hsid_copy.as_deref(),
+                    ) {
+                        resolved_session_id = Some(sid.to_string());
+                        if resume_only {
+                            tracing::debug!(
+                                rid = %rid,
+                                provider_session_id = sid,
+                                "Skipping provider session persistence for resume-only stream"
+                            );
+                        } else if let (Some(ctx), Some(conn)) = (&exchange_ctx, &db_conn) {
+                            if let Err(error) = conn.execute(
+                                "UPDATE sessions SET provider_session_id = ?2, agent_type = ?3 WHERE id = ?1",
+                                params![ctx.helmor_session_id, sid, ctx.model_provider],
+                            ) {
+                                tracing::error!(rid = %rid, "Failed to persist session id: {error}");
+                            } else {
+                                tracing::debug!(rid = %rid, provider_session_id = sid, "Session ID persisted");
+                            }
                         }
                     }
                 }
@@ -970,6 +996,35 @@ fn build_exit_plan_review_message(
 mod tests {
     use super::*;
     use insta::assert_yaml_snapshot;
+
+    #[test]
+    fn provider_session_id_is_adopted_only_once() {
+        assert!(should_adopt_provider_session_id(
+            None,
+            "provider-session-1",
+            None
+        ));
+        assert!(!should_adopt_provider_session_id(
+            Some("provider-session-1"),
+            "provider-session-1",
+            None,
+        ));
+        assert!(!should_adopt_provider_session_id(
+            Some("provider-session-1"),
+            "provider-session-2",
+            None,
+        ));
+    }
+
+    #[test]
+    fn provider_session_id_rejects_empty_and_helmor_echo_values() {
+        assert!(!should_adopt_provider_session_id(None, "", None));
+        assert!(!should_adopt_provider_session_id(
+            None,
+            "helmor-session-1",
+            Some("helmor-session-1"),
+        ));
+    }
 
     #[test]
     fn build_elicitation_request_event_maps_raw_sidecar_payload() {
