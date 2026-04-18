@@ -50,7 +50,13 @@
  */
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentModelSection } from "@/lib/api";
 import { createHelmorQueryClient } from "@/lib/query-client";
@@ -159,12 +165,15 @@ function renderComposer() {
  *
  * Real flow: user types raw keys → IME intercepts and shows segmented
  * candidates in the IME popup → IME writes the running buffer into the
- * contenteditable as plain text → user switches IME → OS commits the
- * buffer and the browser fires compositionend with `data` = the buffer.
+ * contenteditable as plain text AND places the caret at the end of that
+ * buffer → user switches IME → OS commits the buffer and the browser
+ * fires compositionend with `data` = the buffer.
  *
  * jsdom doesn't simulate any of that, so we simulate the *editor-visible*
- * outcome: write the segmented buffer into the paragraph text node and
- * then dispatch the composition events Lexical actually listens to.
+ * outcome: write the segmented buffer into the paragraph text node,
+ * collapse the DOM selection to the end of that buffer (what any real
+ * IME would do before compositionend), then dispatch the composition
+ * events Lexical actually listens to.
  */
 function simulateImeSwitchCommit(editor: HTMLElement, segmentedBuffer: string) {
 	const paragraph = editor.querySelector("p");
@@ -175,6 +184,17 @@ function simulateImeSwitchCommit(editor: HTMLElement, segmentedBuffer: string) {
 	}
 	fireEvent.compositionStart(editor, { data: "" });
 	paragraph.textContent = segmentedBuffer;
+	const textNode = paragraph.firstChild;
+	if (textNode) {
+		const sel = editor.ownerDocument.defaultView?.getSelection();
+		if (sel) {
+			const range = editor.ownerDocument.createRange();
+			range.setStart(textNode, segmentedBuffer.length);
+			range.setEnd(textNode, segmentedBuffer.length);
+			sel.removeAllRanges();
+			sel.addRange(range);
+		}
+	}
 	fireEvent.compositionUpdate(editor, { data: segmentedBuffer });
 	fireEvent.compositionEnd(editor, { data: segmentedBuffer });
 }
@@ -234,5 +254,63 @@ describe("WorkspaceComposer — IME switch mid-composition leaves segmentation s
 		simulateImeSwitchCommit(editor, "你好 world");
 
 		expect(editor.textContent).toBe("你好 world");
+	});
+
+	// When the strip plugin mutates the text node we have to re-anchor the
+	// DOM selection to the end of the REPLACEMENT text. Without that
+	// re-anchor, setting `.textContent` on the Text node either clamps the
+	// selection to the new shorter length on spec-compliant engines OR
+	// collapses it to offset 0 on WebKit (the user reported "cursor flashes
+	// to the front" after our original fix landed — that is the WebKit
+	// collapse path). Either way, Lexical's bubble-phase compositionend
+	// handler then reads whatever offset it finds and writes it into the
+	// model, so an unset selection becomes the persistent caret position
+	// shown to the user.
+	//
+	// This test pins the desired behavior: after a pinyin buffer
+	// `"he lmor"` is force-committed (IME cursor at end, offset 7), the
+	// strip lands `"helmor"` in the editor AND the caret ends at the end
+	// of `"helmor"` (offset 6). Today jsdom clamps the selection so this
+	// may be passing already on paper — but the plugin itself does not
+	// restore the selection explicitly, which is what the real-world
+	// WebKit bug requires. Fix must add an explicit
+	// `selection.collapse(textNode, newEnd)` after the mutation.
+	it("restores caret to the end of the stripped text (not the start) after IME commit", async () => {
+		renderComposer();
+		const editor = await screen.findByLabelText("Workspace input");
+		editor.focus();
+
+		simulateImeSwitchCommit(editor, "he lmor");
+
+		expect(editor.textContent).toBe("helmor");
+
+		// Wait for Lexical to finish its compositionend update cycle, then
+		// verify the caret landed at the end of the stripped text.
+		await waitFor(() => {
+			const sel = editor.ownerDocument.defaultView?.getSelection();
+			expect(sel).toBeTruthy();
+			expect(sel?.anchorNode).not.toBeNull();
+			expect(sel?.isCollapsed).toBe(true);
+
+			// Resolve the anchor to a text offset regardless of whether the
+			// engine reports it against the Text node directly (anchorOffset
+			// is a character index into the text node) or against a parent
+			// element (anchorOffset is a child index — for us that's 1 for
+			// the paragraph anchor AFTER the stripped text node).
+			const anchorNode = sel?.anchorNode;
+			const anchorOffset = sel?.anchorOffset ?? -1;
+			const paragraph = editor.querySelector("p");
+			const textNode = paragraph?.firstChild;
+
+			if (anchorNode === textNode) {
+				expect(anchorOffset).toBe("helmor".length);
+			} else if (anchorNode === paragraph) {
+				expect(anchorOffset).toBeGreaterThanOrEqual(1);
+			} else {
+				throw new Error(
+					`Unexpected anchor node: ${anchorNode?.nodeName ?? "null"}`,
+				);
+			}
+		});
 	});
 });
