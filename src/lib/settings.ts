@@ -146,11 +146,14 @@ export async function saveSettings(patch: Partial<AppSettings>): Promise<void> {
 
 export type SettingsContextValue = {
 	settings: AppSettings;
+	/** False while the initial load from SQLite is still in flight. */
+	isLoaded: boolean;
 	updateSettings: (patch: Partial<AppSettings>) => void;
 };
 
 export const SettingsContext = createContext<SettingsContextValue>({
 	settings: DEFAULT_SETTINGS,
+	isLoaded: false,
 	updateSettings: () => {},
 });
 

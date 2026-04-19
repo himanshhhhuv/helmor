@@ -45,6 +45,7 @@ import {
 import { EditorIcon } from "@/shell/editor-icon";
 import { GithubIdentityGate } from "@/shell/github-identity-gate";
 import { GithubStatusMenu } from "@/shell/github-status-menu";
+import { useEnsureDefaultModel } from "@/shell/hooks/use-ensure-default-model";
 import { useGithubIdentity } from "@/shell/hooks/use-github-identity";
 import { useShellPanels } from "@/shell/hooks/use-panels";
 import {
@@ -135,6 +136,7 @@ function App() {
 	const settingsContextValue = useMemo(
 		() => ({
 			settings: appSettings ?? preloadSettings,
+			isLoaded: appSettings !== null,
 			updateSettings: (patch: Partial<AppSettings>) => {
 				setAppSettings((previous) => {
 					const next = { ...(previous ?? DEFAULT_SETTINGS), ...patch };
@@ -143,7 +145,7 @@ function App() {
 				});
 			},
 		}),
-		[appSettings],
+		[appSettings, preloadSettings],
 	);
 
 	const [splashVisible, setSplashVisible] = useState(true);
@@ -441,6 +443,7 @@ function AppShell({
 
 	const { settings: appSettings } = useSettings();
 	useAppUpdater();
+	useEnsureDefaultModel();
 	const notify = useOsNotifications(appSettings);
 	const [installedEditors, setInstalledEditors] = useState<DetectedEditor[]>(
 		[],
