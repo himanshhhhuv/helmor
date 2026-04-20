@@ -25,12 +25,22 @@ export function useDockUnreadBadge(): void {
 	const count = selectUnreadSessionCount(groups);
 
 	useEffect(() => {
-		const win = getCurrentWindow();
-		// `undefined` removes the badge on macOS; any positive integer sets it.
-		// macOS renders huge numbers itself (99+), so we don't cap here.
-		void win.setBadgeCount(count > 0 ? count : undefined).catch(() => {
-			// Platforms without dock-badge support (Windows) or a missing
-			// capability should never surface as a user-visible error.
-		});
+		// Wrap in try/catch because the Tauri window handle may lack
+		// `setBadgeCount` entirely — e.g. in the Playwright E2E harness where
+		// `@tauri-apps/api/window` is aliased to a stub, or in any future
+		// non-Tauri surface. A missing method would throw synchronously, which
+		// `.catch` cannot intercept, and React would treat it as a render
+		// error and tear down the parent subtree.
+		try {
+			const win = getCurrentWindow();
+			// `undefined` removes the badge on macOS; any positive integer sets
+			// it. macOS renders huge numbers itself (99+), so we don't cap.
+			void win.setBadgeCount?.(count > 0 ? count : undefined)?.catch(() => {
+				// Platforms without dock-badge support (Windows) or a missing
+				// capability should never surface as a user-visible error.
+			});
+		} catch {
+			// Missing Tauri runtime altogether — silently no-op.
+		}
 	}, [count]);
 }

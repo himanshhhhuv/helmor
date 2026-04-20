@@ -149,4 +149,37 @@ describe("useDockUnreadBadge", () => {
 			expect(setBadgeCount).toHaveBeenLastCalledWith(1);
 		});
 	});
+
+	it("tolerates a window handle that lacks setBadgeCount entirely — e.g. the E2E stub", async () => {
+		// Reproduces the Playwright E2E harness where `@tauri-apps/api/window`
+		// is aliased to a stub module that omits `setBadgeCount`. Without
+		// defensive guarding, `win.setBadgeCount(...)` throws a synchronous
+		// TypeError from inside the effect — React cannot catch that via
+		// `.catch()` on the rejected promise chain, so it bubbles to React's
+		// uncaught-effect-error reporter and tears down the parent subtree.
+		// On CI this surfaced as "Workspace sidebar not found" in Playwright.
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const { getCurrentWindow } = await import("@tauri-apps/api/window");
+		vi.mocked(getCurrentWindow).mockReturnValueOnce({
+			onCloseRequested: vi.fn(async () => () => {}),
+			// Deliberately no setBadgeCount.
+		} as unknown as ReturnType<typeof getCurrentWindow>);
+
+		renderHook(() => useDockUnreadBadge(), {
+			wrapper: wrapperFor(makeClient(makeGroups([3]))),
+		});
+
+		// Let the async effect queue drain so any uncaught error surfaces.
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		const loggedSetBadgeTypeError = errorSpy.mock.calls.some((call) =>
+			call.some((arg) =>
+				arg instanceof Error
+					? arg.message.includes("setBadgeCount")
+					: String(arg ?? "").includes("setBadgeCount"),
+			),
+		);
+		expect(loggedSetBadgeTypeError).toBe(false);
+		errorSpy.mockRestore();
+	});
 });
