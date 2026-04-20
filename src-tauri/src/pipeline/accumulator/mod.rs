@@ -322,6 +322,17 @@ impl StreamAccumulator {
                 self.handle_user(raw_line, value);
                 PushOutcome::Finalized
             }
+            // Mid-turn steer injection — same semantics as a regular user
+            // turn boundary (flush in-flight assistant, push a user turn,
+            // subsequent assistant events start a fresh message). The
+            // inner JSON shape matches what `persist_user_message` writes
+            // for initial prompts, so streaming persistence and reload
+            // both go through the adapter's existing `user_prompt` branch
+            // without any special-case handling.
+            Some("user_prompt") => {
+                self.handle_user(raw_line, value);
+                PushOutcome::Finalized
+            }
             Some("result") => {
                 self.handle_result(value, raw_line);
                 PushOutcome::Finalized

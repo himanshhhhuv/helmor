@@ -231,13 +231,19 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
 	const toolbarDisabled = disabled || hasPendingInteraction;
 	const composerToolbarTriggerClassName =
 		"cursor-pointer rounded-[9px] px-1 py-0.5 text-[13px] font-medium transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50";
-	const sendDisabled =
-		disabled ||
-		submitDisabled ||
-		sending ||
-		hasPendingInteraction ||
-		!selectedModel ||
-		!hasContent;
+	// Shared gate for Send and Steer — the only difference is whether a
+	// stream is currently running. When sending, ⌘Enter / Enter still
+	// fires `handleSubmit`; the use-streaming hook dispatches to the
+	// steer path based on `sendingContextKeys`.
+	const submitEnabled =
+		!disabled &&
+		!submitDisabled &&
+		!hasPendingInteraction &&
+		Boolean(selectedModel) &&
+		hasContent;
+	const sendDisabled = !submitEnabled || sending;
+	const steerDisabled = !submitEnabled || !sending;
+	const submitDisabledForPlugin = !submitEnabled;
 
 	// Lexical initial config — must be a new object per mount for key resets
 	const initialConfig = useRef({
@@ -409,7 +415,10 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
 							workspaceRootPath={workspaceRootPath}
 							popupAnchorRef={composerRootRef}
 						/>
-						<SubmitPlugin onSubmit={handleSubmit} disabled={sendDisabled} />
+						<SubmitPlugin
+							onSubmit={handleSubmit}
+							disabled={submitDisabledForPlugin}
+						/>
 						<CompositionGuardPlugin />
 						<PasteImagePlugin />
 						<DropFilePlugin />
@@ -648,16 +657,30 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
 									</Button>
 								</>
 							) : sending ? (
-								<Button
-									variant="destructive"
-									size="icon"
-									aria-label="Stop"
-									onClick={onStop}
-									disabled={disabled || submitDisabled}
-									className="rounded-[9px]"
-								>
-									<Square className="size-3 fill-current" strokeWidth={0} />
-								</Button>
+								<div className="flex items-center gap-1.5">
+									<Button
+										variant="destructive"
+										size="icon"
+										aria-label="Stop"
+										onClick={onStop}
+										disabled={disabled || submitDisabled}
+										className="rounded-[9px]"
+									>
+										<Square className="size-3 fill-current" strokeWidth={0} />
+									</Button>
+									{hasContent ? (
+										<Button
+											variant="outline"
+											size="icon"
+											aria-label="Steer"
+											onClick={handleSubmit}
+											disabled={steerDisabled}
+											className="rounded-[9px]"
+										>
+											<ArrowUp className="size-[15px]" strokeWidth={2.2} />
+										</Button>
+									) : null}
+								</div>
 							) : (
 								<Button
 									variant="outline"
