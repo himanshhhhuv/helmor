@@ -13,11 +13,20 @@ pub struct AgentModelOption {
     pub supports_fast_mode: bool,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AgentModelSectionStatus {
+    Ready,
+    Unavailable,
+    Error,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentModelSection {
     pub id: String,
     pub label: String,
+    pub status: AgentModelSectionStatus,
     pub options: Vec<AgentModelOption>,
 }
 

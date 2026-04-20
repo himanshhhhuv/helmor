@@ -507,10 +507,6 @@ export const WorkspaceComposerContainer = memo(
 			!slashCommandsQuery.isError;
 		const slashCommandsError =
 			Boolean(workingDirectory) && slashCommandsQuery.isError;
-		// True when local skills are shown but the full list is still loading
-		// in the background via the sidecar.
-		const slashCommandsRefreshing =
-			slashCommandsResponse != null && !slashCommandsResponse.isComplete;
 		const refetchSlashCommands = useCallback(() => {
 			void slashCommandsQuery.refetch();
 		}, [slashCommandsQuery]);
@@ -751,7 +747,6 @@ export const WorkspaceComposerContainer = memo(
 						slashCommands={slashCommands}
 						slashCommandsLoading={slashCommandsLoading}
 						slashCommandsError={slashCommandsError}
-						slashCommandsRefreshing={slashCommandsRefreshing}
 						onRetrySlashCommands={refetchSlashCommands}
 						workspaceRootPath={workingDirectory}
 						linkedDirectories={linkedDirectories}

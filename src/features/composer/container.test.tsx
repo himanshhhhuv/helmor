@@ -213,7 +213,6 @@ describe("WorkspaceComposerContainer", () => {
 		apiMockState.setWorkspaceLinkedDirectories.mockReset();
 		apiMockState.listSlashCommands.mockResolvedValue({
 			commands: [],
-			isComplete: true,
 		});
 	});
 
