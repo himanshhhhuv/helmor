@@ -33,7 +33,13 @@ import {
 } from "@lexical/react/LexicalTypeaheadMenuPlugin";
 import type { TextNode } from "lexical";
 import { Loader2, RefreshCw } from "lucide-react";
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import {
+	type ReactNode,
+	type RefObject,
+	useCallback,
+	useMemo,
+	useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -92,18 +98,23 @@ export function SlashCommandPlugin({
 	commands,
 	isLoading = false,
 	isError = false,
-	isRefreshing = false,
 	onRetry,
+	popupAnchorRef,
 }: {
 	commands: readonly SlashCommandEntry[];
 	/** True while the slash-command query is in flight (initial fetch or retry). */
 	isLoading?: boolean;
 	/** True when the query rejected (sidecar timeout, missing CLI, etc). */
 	isError?: boolean;
-	/** True when local skills are shown but the full list is still loading. */
-	isRefreshing?: boolean;
 	/** Click handler for the "retry" row in the error state. */
 	onRetry?: () => void;
+	/**
+	 * Optional portal target for the popup. When provided, the popup is rendered
+	 * inside this element (expected to be `position: relative`) so `bottom-full`
+	 * anchors the popup to the container's top edge rather than the caret. Falls
+	 * back to Lexical's caret-tracking anchor div when omitted.
+	 */
+	popupAnchorRef?: RefObject<HTMLElement | null>;
 }) {
 	const [editor] = useLexicalComposerContext();
 	const [query, setQuery] = useState<string | null>(null);
@@ -159,7 +170,12 @@ export function SlashCommandPlugin({
 				anchorElementRef,
 				{ selectedIndex, selectOptionAndCleanUp, setHighlightedIndex },
 			) => {
-				if (!anchorElementRef.current) return null;
+				// Prefer the composer root (passed in via prop) so the popup hugs
+				// the input's top edge with an 8px gap. Fall back to Lexical's
+				// caret-tracking anchor when no explicit container is provided.
+				const portalTarget =
+					popupAnchorRef?.current ?? anchorElementRef.current;
+				if (!portalTarget) return null;
 
 				// Resolve the popup state. We always render *something* now —
 				// returning null when `options.length === 0` used to make the
@@ -212,20 +228,22 @@ export function SlashCommandPlugin({
 				const highlightValue = options[selectedIndex ?? 0]?.entry.name ?? "";
 
 				return createPortal(
-					// The composer always sits at the bottom of the viewport, so
-					// the popup must open *upward* from the caret. Anchored to
-					// the typeahead anchor div via `bottom: 100%` so the popup's
-					// bottom edge sits just above the cursor with a small gap.
+					// The popup hugs the composer's top edge: `bottom-full` puts
+					// the popup's bottom on the composer's top edge and `mb-2`
+					// adds an 8px gap. This only works because `popupAnchorRef`
+					// points at the `position: relative` composer root — Lexical's
+					// default caret-tracking anchor would put the popup's bottom
+					// at the caret, not the composer rim, which is what caused
+					// the popup to render underneath the input box.
 					//
 					// `isolate z-[9999]` lifts the popup above every other
-					// stacking context on the page. The Lexical anchor div is
-					// appended directly to `document.body` but defaults to
-					// `z-index: auto`, so without an explicit value plus a
-					// fresh stacking context (`isolate`), the popup gets
-					// occluded by other body-level overlays (the Tauri title
-					// bar, the conversation thread's transform-based
-					// stacking contexts, etc.).
-					<div className="pointer-events-auto absolute bottom-full left-0 isolate z-[9999] mb-2 w-[min(640px,calc(100vw-2rem))]">
+					// stacking context on the page so overlays like the Tauri
+					// title bar and transform-based stacking contexts in the
+					// conversation thread don't occlude it.
+					<div
+						data-typeahead-popup="slash"
+						className="pointer-events-auto absolute bottom-full left-0 isolate z-[9999] mb-2 w-[min(640px,calc(100vw-2rem))]"
+					>
 						<Command
 							value={highlightValue}
 							shouldFilter={false}
@@ -274,16 +292,10 @@ export function SlashCommandPlugin({
 										})}
 									</CommandGroup>
 								) : null}
-								{hasOptions && isRefreshing && (
-									<div className="flex items-center gap-2 border-t border-border/40 px-3 py-1.5 text-[12px] text-muted-foreground">
-										<Loader2 className="size-3 shrink-0 animate-spin" />
-										<span>Loading more commands…</span>
-									</div>
-								)}
 							</CommandList>
 						</Command>
 					</div>,
-					anchorElementRef.current,
+					portalTarget,
 				);
 			}}
 		/>

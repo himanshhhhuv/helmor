@@ -105,7 +105,6 @@ type WorkspaceComposerProps = {
 	slashCommands?: readonly SlashCommandEntry[];
 	slashCommandsLoading?: boolean;
 	slashCommandsError?: boolean;
-	slashCommandsRefreshing?: boolean;
 	onRetrySlashCommands?: () => void;
 	workspaceRootPath?: string | null;
 	pendingElicitation?: PendingElicitation | null;
@@ -166,7 +165,6 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
 	slashCommands = EMPTY_SLASH_COMMANDS,
 	slashCommandsLoading = false,
 	slashCommandsError = false,
-	slashCommandsRefreshing = false,
 	onRetrySlashCommands,
 	workspaceRootPath = null,
 	pendingElicitation = null,
@@ -183,6 +181,13 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
 		recordComposerRender(contextKey, instanceIdRef.current);
 	});
 	const editorRef = useRef<LexicalEditor | null>(null);
+	// Root element of the composer surface. Used as the portal anchor for the
+	// slash/@ typeahead popups so they hug the top edge of the composer box
+	// (with an 8px gap) instead of the caret tracking div Lexical creates on
+	// `document.body` — the tracking div follows the caret, which sits *inside*
+	// the composer padding and would put the popup's bottom edge underneath the
+	// composer rim.
+	const composerRootRef = useRef<HTMLDivElement | null>(null);
 	const consumedInsertRequestIdsRef = useRef<Set<string>>(new Set());
 	const [hasContent, setHasContent] = useState(false);
 	const selectedModel = useMemo(() => {
@@ -346,9 +351,10 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
 
 	return (
 		<div
+			ref={composerRootRef}
 			aria-label="Workspace composer"
 			className={cn(
-				"flex flex-col rounded-2xl border border-border/40 bg-sidebar shadow-[0_-1px_8px_rgba(0,0,0,0.05),0_0_0_1px_rgba(255,255,255,0.02)]",
+				"relative flex flex-col rounded-2xl border border-border/40 bg-sidebar shadow-[0_-1px_8px_rgba(0,0,0,0.05),0_0_0_1px_rgba(255,255,255,0.02)]",
 				// Pending-interaction panels fill the shell edge-to-edge and own
 				// their own internal padding; the default composer gets the
 				// legacy px-4 pt-3 pb-3 breathing room.
@@ -402,10 +408,13 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
 							commands={slashCommands}
 							isLoading={slashCommandsLoading}
 							isError={slashCommandsError}
-							isRefreshing={slashCommandsRefreshing}
 							onRetry={onRetrySlashCommands}
+							popupAnchorRef={composerRootRef}
 						/>
-						<FileMentionPlugin workspaceRootPath={workspaceRootPath} />
+						<FileMentionPlugin
+							workspaceRootPath={workspaceRootPath}
+							popupAnchorRef={composerRootRef}
+						/>
 						<SubmitPlugin
 							onSubmit={handleSubmit}
 							disabled={submitDisabledForPlugin}

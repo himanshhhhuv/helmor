@@ -102,9 +102,12 @@ export type AgentModelOption = {
 	supportsFastMode?: boolean;
 };
 
+export type AgentModelSectionStatus = "ready" | "unavailable" | "error";
+
 export type AgentModelSection = {
 	id: AgentProvider;
 	label: string;
+	status?: AgentModelSectionStatus;
 	options: AgentModelOption[];
 };
 
@@ -658,8 +661,6 @@ export type SlashCommandEntry = {
 
 export type SlashCommandsResponse = {
 	commands: SlashCommandEntry[];
-	/** `false` while the background sidecar refresh is still in flight. */
-	isComplete: boolean;
 };
 
 /**
@@ -2030,6 +2031,49 @@ export async function stopRepoScript(
 		repoId,
 		scriptType,
 		workspaceId: workspaceId ?? null,
+	});
+}
+
+/**
+ * Send raw bytes to a running script's PTY master. The kernel's tty line
+ * discipline translates `\x03` into SIGINT for the foreground process group,
+ * so passing `\x03` here is how Ctrl+C in the terminal tab actually kills
+ * the running process.
+ *
+ * Returns `true` if the script was live and received the bytes, `false` if
+ * no live script matches the key (caller can ignore).
+ */
+export async function writeRepoScriptStdin(
+	repoId: string,
+	scriptType: "setup" | "run",
+	workspaceId: string | null,
+	data: string,
+): Promise<boolean> {
+	return invoke<boolean>("write_repo_script_stdin", {
+		repoId,
+		scriptType,
+		workspaceId: workspaceId ?? null,
+		data,
+	});
+}
+
+/**
+ * Tell the PTY about a new terminal size. The kernel delivers SIGWINCH to
+ * the foreground process group so interactive tools re-layout.
+ */
+export async function resizeRepoScript(
+	repoId: string,
+	scriptType: "setup" | "run",
+	workspaceId: string | null,
+	cols: number,
+	rows: number,
+): Promise<boolean> {
+	return invoke<boolean>("resize_repo_script", {
+		repoId,
+		scriptType,
+		workspaceId: workspaceId ?? null,
+		cols,
+		rows,
 	});
 }
 

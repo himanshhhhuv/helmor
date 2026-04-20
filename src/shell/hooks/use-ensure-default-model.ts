@@ -1,8 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
+import type { AgentModelSection } from "@/lib/api";
 import { agentModelSectionsQueryOptions } from "@/lib/query-client";
 import { useSettings } from "@/lib/settings";
 import { findModelOption } from "@/lib/workspace-helpers";
+
+const KNOWN_MODEL_PROVIDERS = ["claude", "codex"] as const;
+
+function isModelCatalogSettled(sections: AgentModelSection[]) {
+	if (sections.length === 0) return false;
+	const sectionsById = new Map(
+		sections.map((section) => [section.id, section]),
+	);
+	return KNOWN_MODEL_PROVIDERS.every((provider) => {
+		const section = sectionsById.get(provider);
+		if (!section) return false;
+		return (section.status ?? "ready") !== "error";
+	});
+}
 
 /**
  * Invariant: once the model catalog is ready, `settings.defaultModelId` must
@@ -17,19 +32,27 @@ export function useEnsureDefaultModel() {
 	const sections = modelSectionsQuery.data;
 
 	useEffect(() => {
-		// Don't write until SQLite settings are loaded — otherwise we'd
-		// overwrite the user's real value with a default.
 		if (!isLoaded) return;
 		if (!sections || sections.length === 0) return;
+		const allOptions = sections.flatMap((s) => s.options);
+
+		// Already valid — nothing to do.
 		if (
 			settings.defaultModelId &&
 			findModelOption(sections, settings.defaultModelId)
 		) {
 			return;
 		}
+
+		// User previously saved a model but it's not in the catalog. Only
+		// repair it once every provider has reached a terminal state.
+		if (settings.defaultModelId && !isModelCatalogSettled(sections)) return;
+
+		// Never been set (null), or a previously-saved value is now definitively
+		// unavailable — pick a sensible available default.
 		const pick =
 			sections.find((s) => s.id === "claude")?.options[0]?.id ??
-			sections[0]?.options[0]?.id ??
+			allOptions[0]?.id ??
 			null;
 		if (!pick) return;
 		updateSettings({ defaultModelId: pick });

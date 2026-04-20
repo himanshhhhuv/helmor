@@ -362,9 +362,8 @@ export const WorkspaceComposerContainer = memo(
 			),
 			enabled: Boolean(workingDirectory),
 		});
-		const slashCommandsResponse = slashCommandsQuery.data;
 		const slashCommands =
-			slashCommandsResponse?.commands ?? EMPTY_SLASH_COMMANDS;
+			slashCommandsQuery.data?.commands ?? EMPTY_SLASH_COMMANDS;
 		// Pending only (`isPending`) covers the very first fetch with no data
 		// yet; once we have data, `isFetching` covers background refetches but
 		// users don't need a spinner for those — the cached list is fine.
@@ -374,10 +373,6 @@ export const WorkspaceComposerContainer = memo(
 			!slashCommandsQuery.isError;
 		const slashCommandsError =
 			Boolean(workingDirectory) && slashCommandsQuery.isError;
-		// True when local skills are shown but the full list is still loading
-		// in the background via the sidecar.
-		const slashCommandsRefreshing =
-			slashCommandsResponse != null && !slashCommandsResponse.isComplete;
 		const refetchSlashCommands = useCallback(() => {
 			void slashCommandsQuery.refetch();
 		}, [slashCommandsQuery]);
@@ -508,7 +503,13 @@ export const WorkspaceComposerContainer = memo(
 			"When enabled, action sessions will close automatically when finished.";
 
 		return (
-			<div className="relative isolate flex flex-col">
+			// `z-20` lifts the entire composer stacking context above the thread
+			// viewport's `z-10` root (`thread-viewport.tsx:99`). Without this the
+			// slash/@ popup — which portals into the composer root — gets
+			// occluded by chat messages when it opens upward past the composer's
+			// top edge, because the composer's `isolate` traps popup z-index
+			// inside a stacking context whose outer z defaults to `auto`.
+			<div className="relative isolate z-20 flex flex-col">
 				{isActionSession ? (
 					<ActionRow
 						className={cn(
@@ -612,7 +613,6 @@ export const WorkspaceComposerContainer = memo(
 						slashCommands={slashCommands}
 						slashCommandsLoading={slashCommandsLoading}
 						slashCommandsError={slashCommandsError}
-						slashCommandsRefreshing={slashCommandsRefreshing}
 						onRetrySlashCommands={refetchSlashCommands}
 						workspaceRootPath={workingDirectory}
 					/>
