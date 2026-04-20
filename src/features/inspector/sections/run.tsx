@@ -13,6 +13,7 @@ import {
 	type ScriptStatus,
 	startScript,
 	stopScript,
+	TRUNCATION_NOTICE,
 	writeStdin,
 } from "../script-store";
 
@@ -54,6 +55,7 @@ export function RunTab({
 				const t = termRef.current;
 				if (!t) return;
 				t.clear();
+				if (existing.truncated) t.write(TRUNCATION_NOTICE);
 				for (const chunk of existing.chunks) t.write(chunk);
 			};
 			if (termRef.current) replay();

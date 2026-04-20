@@ -29,6 +29,40 @@ export type TerminalHandle = {
 	dispose: () => void;
 };
 
+// Global suspend counter shared across every mounted TerminalOutput.
+//
+// The xterm FitAddon re-computes cols/rows and reflows its scrollback buffer
+// on every ResizeObserver callback. Animating an ancestor's width/height (for
+// example the Setup/Run hover-zoom) makes the observer fire once per frame,
+// which pegs the main thread with dozens of buffer reflows over the duration
+// of the animation. A caller can wrap the animation window in
+// `suspendTerminalFit()` to skip the per-frame fits; when the last outstanding
+// release runs, every mounted terminal performs one final fit with the
+// settled dimensions.
+let terminalFitSuspendCount = 0;
+const terminalRefitListeners = new Set<() => void>();
+
+/**
+ * Pause `FitAddon.fit()` on every mounted `TerminalOutput` until the
+ * returned release function is called. When the suspend count drops back to
+ * zero each terminal is asked to re-fit once so its cols/rows match the
+ * final container size. The release is idempotent — calling it twice is a
+ * no-op — which makes it safe to keep a ref to in React without worrying
+ * about strict-mode or cleanup order.
+ */
+export function suspendTerminalFit(): () => void {
+	terminalFitSuspendCount++;
+	let released = false;
+	return () => {
+		if (released) return;
+		released = true;
+		terminalFitSuspendCount--;
+		if (terminalFitSuspendCount === 0) {
+			for (const listener of terminalRefitListeners) listener();
+		}
+	};
+}
+
 /** Read --terminal-* and --foreground CSS variables and build an xterm ITheme. */
 function resolveTerminalTheme(): ITheme {
 	const s = getComputedStyle(document.documentElement);
@@ -105,7 +139,17 @@ export function TerminalOutput({
 		terminal.loadAddon(fit);
 		terminal.open(container);
 
-		requestAnimationFrame(() => fit.fit());
+		const runFit = () => {
+			requestAnimationFrame(() => {
+				try {
+					fit.fit();
+				} catch {
+					// Container might be detached.
+				}
+			});
+		};
+
+		runFit();
 
 		// Every keystroke / paste flows through here. xterm has already done
 		// the key → byte translation (e.g. Ctrl+C → `\x03`), we just
@@ -121,15 +165,16 @@ export function TerminalOutput({
 		});
 
 		const resizeObserver = new ResizeObserver(() => {
-			requestAnimationFrame(() => {
-				try {
-					fit.fit();
-				} catch {
-					// Container might be detached.
-				}
-			});
+			// A caller is animating an ancestor — skip the per-frame reflow and
+			// rely on `refitListener` below to fit once when the animation ends.
+			if (terminalFitSuspendCount > 0) return;
+			runFit();
 		});
 		resizeObserver.observe(container);
+
+		// Fired when the last outstanding `suspendTerminalFit()` release runs.
+		const refitListener = () => runFit();
+		terminalRefitListeners.add(refitListener);
 
 		// Re-resolve CSS variables when app light/dark mode changes.
 		const themeObserver = new MutationObserver(() => {
@@ -159,6 +204,7 @@ export function TerminalOutput({
 			resizeSub.dispose();
 			themeObserver.disconnect();
 			resizeObserver.disconnect();
+			terminalRefitListeners.delete(refitListener);
 			terminal.dispose();
 			xtermRef.current = null;
 			fitRef.current = null;
