@@ -41,6 +41,7 @@
 		"prepare": "husky",
 		"release:notes": "node scripts/extract-release-notes.mjs",
 		"release:sync-versions": "node scripts/sync-release-versions.mjs",
+		"release:tag": "node scripts/create-release-tag.mjs",
 		"release:verify": "node scripts/verify-release-config.mjs",
 		"release:version": "changeset version && bun run release:sync-versions",
 		"storybook": "storybook dev -p 6006",
