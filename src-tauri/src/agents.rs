@@ -42,6 +42,18 @@ pub fn prewarm_slash_command_cache(app: &AppHandle) {
     queries::prewarm_slash_command_cache(app);
 }
 
+/// Tauri command — called from the frontend on workspace switch.
+/// Kicks off a background refresh for the target workspace so the next
+/// `/` press in the composer hits a warm cache.
+#[tauri::command]
+pub async fn prewarm_slash_commands_for_workspace(
+    app: AppHandle,
+    workspace_id: String,
+) -> CmdResult<()> {
+    queries::prewarm_slash_command_cache_for_workspace(&app, &workspace_id);
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Streaming event types
 // ---------------------------------------------------------------------------

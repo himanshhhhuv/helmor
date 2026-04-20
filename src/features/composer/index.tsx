@@ -482,7 +482,9 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
 																		<ClaudeIcon className="size-[13px]" />
 																	)}
 																</span>
-																<span>{option.label}</span>
+																<span className="font-mono tabular-nums">
+																	{option.label}
+																</span>
 															</div>
 														</DropdownMenuItem>
 													))}
