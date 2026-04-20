@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1
+
+### Patch Changes
+
+- [#152](https://github.com/dohooo/helmor/pull/152) [`405c634`](https://github.com/dohooo/helmor/commit/405c6342f79501e1b577d8cdf1ff32d8779ee5a0) Thanks [@natllian](https://github.com/natllian)! - Fix the sidebar workspace row so the green status dot on the avatar no longer gets clipped when you hover the row.
+
+- [#153](https://github.com/dohooo/helmor/pull/153) [`b05d39f`](https://github.com/dohooo/helmor/commit/b05d39f13e01117e7f5dd1ce726bb6176d46ed8b) Thanks [@natllian](https://github.com/natllian)! - Tighten the scripts terminal hover-zoom so it only engages when there's real output to read:
+  - The Setup/Run tab header no longer triggers the zoom, so moving the cursor between tabs or to the collapse chevron keeps the panel at its resting size.
+  - The empty placeholder states (no script configured, or script configured but not yet run) no longer trigger the zoom — it now only engages once a script has actually produced terminal output.
+  - The Stop/Rerun button in the bottom-right corner only appears once the panel has enlarged, so it's no longer clipped and unclickable at the resting size.
+
 ## 0.2.0
 
 ### Minor Changes
