@@ -109,6 +109,9 @@ pub struct SendMessageParams {
     pub prompt: String,
     pub model: Option<String>,
     pub permission_mode: Option<String>,
+    /// Extra linked directories (`/add-dir`). When empty, persisted linked
+    /// directories for the session are used instead.
+    pub linked_directories: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -229,17 +232,37 @@ pub fn send_message(
 
     // 5. Build and send request
     let request_id = Uuid::new_v4().to_string();
+
+    // Merge explicit linked dirs with any persisted on the workspace so a
+    // resumed CLI turn still sees `/add-dir` context that was set via the
+    // GUI earlier.
+    let mut additional_directories = params.linked_directories.clone();
+    if additional_directories.is_empty() {
+        additional_directories =
+            crate::agents::lookup_workspace_linked_directories(Some(&session_id));
+    }
+
+    let mut payload = serde_json::json!({
+        "sessionId": session_id,
+        "prompt": params.prompt,
+        "model": model.cli_model,
+        "cwd": cwd,
+        "provider": model.provider,
+        "permissionMode": params.permission_mode.as_deref().unwrap_or("auto"),
+    });
+    if !additional_directories.is_empty() {
+        payload["additionalDirectories"] = serde_json::Value::Array(
+            additional_directories
+                .iter()
+                .map(|dir| serde_json::Value::String(dir.clone()))
+                .collect(),
+        );
+    }
+
     let sidecar_req = crate::sidecar::SidecarRequest {
         id: request_id.clone(),
         method: "sendMessage".to_string(),
-        params: serde_json::json!({
-            "sessionId": session_id,
-            "prompt": params.prompt,
-            "model": model.cli_model,
-            "cwd": cwd,
-            "provider": model.provider,
-            "permissionMode": params.permission_mode.as_deref().unwrap_or("auto"),
-        }),
+        params: payload,
     };
 
     let rx = sidecar.subscribe(&request_id);
@@ -564,6 +587,17 @@ pub fn drain_pending_cli_sends() -> Result<Vec<PendingCliSend>> {
 /// Check if the Helmor App is running by testing the MCP bridge port.
 pub fn is_app_running() -> bool {
     is_port_listening(9223)
+}
+
+/// Spawn a standalone sidecar, ask it for the combined model catalog (Claude
+/// + Codex), and tear it down. Blocks until the sidecar replies or times out.
+/// Used by `helmor models list` when the GUI isn't hosting a sidecar we can
+/// share.
+pub fn fetch_model_sections() -> Vec<crate::agents::AgentModelSection> {
+    let sidecar = crate::sidecar::ManagedSidecar::new();
+    let sections = crate::agents::fetch_agent_model_sections(&sidecar);
+    sidecar.shutdown(Duration::from_millis(500), Duration::from_secs(2));
+    sections
 }
 
 /// Return true iff a TCP listener is accepting connections on the given

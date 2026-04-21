@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod cli;
 pub(crate) mod commands;
 pub mod data_dir;
 pub mod error;
