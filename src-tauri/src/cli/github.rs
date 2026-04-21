@@ -6,9 +6,10 @@ use crate::auth;
 use crate::github_cli;
 use crate::github_graphql;
 use crate::service;
+use crate::ui_sync::UiMutationEvent;
 
 use super::args::{Cli, GithubAction, GithubAuthAction, GithubPrAction};
-use super::output;
+use super::{notify_ui_event, output};
 
 pub fn dispatch(action: &GithubAction, cli: &Cli) -> Result<()> {
     match action {
@@ -49,6 +50,7 @@ fn auth_status(cli: &Cli) -> Result<()> {
 
 fn logout(cli: &Cli) -> Result<()> {
     auth::disconnect_github_identity_headless()?;
+    notify_ui_event(UiMutationEvent::GithubIdentityChanged);
     output::print_ok(cli, "Disconnected from GitHub");
     Ok(())
 }
@@ -107,6 +109,9 @@ fn pr_status(workspace_ref: &str, cli: &Cli) -> Result<()> {
 fn pr_merge(workspace_ref: &str, cli: &Cli) -> Result<()> {
     let id = service::resolve_workspace_ref(workspace_ref)?;
     let pr = github_graphql::merge_workspace_pr(&id)?;
+    notify_ui_event(UiMutationEvent::WorkspacePrChanged {
+        workspace_id: id.clone(),
+    });
     output::print(cli, &pr, |value| match value {
         Some(pr) => format!("Merged PR #{}: {}", pr.number, pr.url),
         None => "No PR to merge.".to_string(),
@@ -116,6 +121,9 @@ fn pr_merge(workspace_ref: &str, cli: &Cli) -> Result<()> {
 fn pr_close(workspace_ref: &str, cli: &Cli) -> Result<()> {
     let id = service::resolve_workspace_ref(workspace_ref)?;
     let pr = github_graphql::close_workspace_pr(&id)?;
+    notify_ui_event(UiMutationEvent::WorkspacePrChanged {
+        workspace_id: id.clone(),
+    });
     output::print(cli, &pr, |value| match value {
         Some(pr) => format!("Closed PR #{}: {}", pr.number, pr.url),
         None => "No PR to close.".to_string(),

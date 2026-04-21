@@ -8,9 +8,10 @@ use anyhow::{Context, Result};
 use crate::editor_files;
 use crate::models::workspaces as workspace_models;
 use crate::service;
+use crate::ui_sync::UiMutationEvent;
 
 use super::args::{Cli, FilesAction};
-use super::output;
+use super::{notify_ui_event, output};
 
 pub fn dispatch(action: &FilesAction, cli: &Cli) -> Result<()> {
     match action {
@@ -40,11 +41,12 @@ pub fn dispatch(action: &FilesAction, cli: &Cli) -> Result<()> {
     }
 }
 
-fn resolve_workspace_root(workspace_ref: &str) -> Result<PathBuf> {
+fn resolve_workspace(workspace_ref: &str) -> Result<(String, PathBuf)> {
     let id = service::resolve_workspace_ref(workspace_ref)?;
     let record = workspace_models::load_workspace_record_by_id(&id)?
         .with_context(|| format!("Workspace not found: {id}"))?;
-    crate::data_dir::workspace_dir(&record.repo_name, &record.directory_name)
+    let root = crate::data_dir::workspace_dir(&record.repo_name, &record.directory_name)?;
+    Ok((id, root))
 }
 
 /// Turn a possibly-relative `<path>` into an absolute path inside the
@@ -59,13 +61,13 @@ fn resolve_absolute(workspace_root: &Path, path: &str) -> PathBuf {
 }
 
 fn changes(workspace_ref: &str, cli: &Cli) -> Result<()> {
-    let root = resolve_workspace_root(workspace_ref)?;
+    let (_, root) = resolve_workspace(workspace_ref)?;
     let items = editor_files::list_workspace_changes(&root.display().to_string())?;
     output::print(cli, &items, |items| format_list(items))
 }
 
 fn list(workspace_ref: &str, cli: &Cli) -> Result<()> {
-    let root = resolve_workspace_root(workspace_ref)?;
+    let (_, root) = resolve_workspace(workspace_ref)?;
     let items = editor_files::list_workspace_files(&root.display().to_string())?;
     output::print(cli, &items, |items| format_list(items))
 }
@@ -87,7 +89,7 @@ fn format_list(items: &[editor_files::EditorFileListItem]) -> String {
 }
 
 fn show(workspace_ref: &str, path: &str, git_ref: Option<&str>, cli: &Cli) -> Result<()> {
-    let root = resolve_workspace_root(workspace_ref)?;
+    let (_, root) = resolve_workspace(workspace_ref)?;
     let absolute = resolve_absolute(&root, path);
     if let Some(git_ref) = git_ref {
         let content = editor_files::read_file_at_ref(
@@ -119,33 +121,37 @@ fn show(workspace_ref: &str, path: &str, git_ref: Option<&str>, cli: &Cli) -> Re
 }
 
 fn write(workspace_ref: &str, path: &str, cli: &Cli) -> Result<()> {
-    let root = resolve_workspace_root(workspace_ref)?;
+    let (workspace_id, root) = resolve_workspace(workspace_ref)?;
     let absolute = resolve_absolute(&root, path);
     let mut content = String::new();
     std::io::stdin()
         .read_to_string(&mut content)
         .context("Failed to read new file content from stdin")?;
     let response = editor_files::write_editor_file(&absolute.display().to_string(), &content)?;
+    notify_ui_event(UiMutationEvent::WorkspaceFilesChanged { workspace_id });
     output::print(cli, &response, |r| format!("Wrote {}", r.path))
 }
 
 fn stage(workspace_ref: &str, path: &str, cli: &Cli) -> Result<()> {
-    let root = resolve_workspace_root(workspace_ref)?;
+    let (workspace_id, root) = resolve_workspace(workspace_ref)?;
     editor_files::stage_workspace_file(&root.display().to_string(), path)?;
+    notify_ui_event(UiMutationEvent::WorkspaceFilesChanged { workspace_id });
     output::print_ok(cli, &format!("Staged {path}"));
     Ok(())
 }
 
 fn unstage(workspace_ref: &str, path: &str, cli: &Cli) -> Result<()> {
-    let root = resolve_workspace_root(workspace_ref)?;
+    let (workspace_id, root) = resolve_workspace(workspace_ref)?;
     editor_files::unstage_workspace_file(&root.display().to_string(), path)?;
+    notify_ui_event(UiMutationEvent::WorkspaceFilesChanged { workspace_id });
     output::print_ok(cli, &format!("Unstaged {path}"));
     Ok(())
 }
 
 fn discard(workspace_ref: &str, path: &str, cli: &Cli) -> Result<()> {
-    let root = resolve_workspace_root(workspace_ref)?;
+    let (workspace_id, root) = resolve_workspace(workspace_ref)?;
     editor_files::discard_workspace_file(&root.display().to_string(), path)?;
+    notify_ui_event(UiMutationEvent::WorkspaceFilesChanged { workspace_id });
     output::print_ok(cli, &format!("Discarded changes in {path}"));
     Ok(())
 }

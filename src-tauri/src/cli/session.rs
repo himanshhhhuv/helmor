@@ -8,10 +8,12 @@ use crate::agents::ActionKind;
 use crate::pipeline::MessagePipeline;
 use crate::service;
 use crate::sessions;
+use crate::ui_sync::UiMutationEvent;
 
 use super::args::{Cli, ReadState, SessionAction};
 use super::output;
 use super::refs;
+use super::{notify_ui_event, notify_ui_events};
 
 pub fn dispatch(action: &SessionAction, cli: &Cli) -> Result<()> {
     match action {
@@ -158,6 +160,9 @@ fn new(workspace_ref: &str, plan: bool, action_kind: Option<&str>, cli: &Cli) ->
     };
     let permission_mode = if plan { Some("plan") } else { None };
     let response = sessions::create_session(&workspace_id, kind, permission_mode)?;
+    notify_ui_event(UiMutationEvent::SessionListChanged {
+        workspace_id: workspace_id.clone(),
+    });
     output::print_id(cli, "sessionId", &response.session_id);
     Ok(())
 }
@@ -171,6 +176,7 @@ fn rename(workspace_ref: &str, session: &str, title: &str, cli: &Cli) -> Result<
     let workspace_id = service::resolve_workspace_ref(workspace_ref)?;
     let session_id = refs::resolve_session_ref(&workspace_id, session)?;
     sessions::rename_session(&session_id, title)?;
+    notify_ui_event(UiMutationEvent::SessionListChanged { workspace_id });
     output::print_ok(cli, &format!("Renamed {session_id} to {title}"));
     Ok(())
 }
@@ -179,6 +185,7 @@ fn delete(workspace_ref: &str, session: &str, cli: &Cli) -> Result<()> {
     let workspace_id = service::resolve_workspace_ref(workspace_ref)?;
     let session_id = refs::resolve_session_ref(&workspace_id, session)?;
     sessions::delete_session(&session_id)?;
+    notify_ui_event(UiMutationEvent::SessionListChanged { workspace_id });
     output::print_ok(cli, &format!("Deleted {session_id}"));
     Ok(())
 }
@@ -187,6 +194,7 @@ fn hide(workspace_ref: &str, session: &str, cli: &Cli) -> Result<()> {
     let workspace_id = service::resolve_workspace_ref(workspace_ref)?;
     let session_id = refs::resolve_session_ref(&workspace_id, session)?;
     sessions::hide_session(&session_id)?;
+    notify_ui_event(UiMutationEvent::SessionListChanged { workspace_id });
     output::print_ok(cli, &format!("Hid {session_id}"));
     Ok(())
 }
@@ -195,6 +203,7 @@ fn unhide(workspace_ref: &str, session: &str, cli: &Cli) -> Result<()> {
     let workspace_id = service::resolve_workspace_ref(workspace_ref)?;
     let session_id = refs::resolve_session_ref(&workspace_id, session)?;
     sessions::unhide_session(&session_id)?;
+    notify_ui_event(UiMutationEvent::SessionListChanged { workspace_id });
     output::print_ok(cli, &format!("Unhid {session_id}"));
     Ok(())
 }
@@ -206,6 +215,12 @@ fn mark(workspace_ref: &str, state: ReadState, session: &str, cli: &Cli) -> Resu
         ReadState::Read => sessions::mark_session_read(&session_id)?,
         ReadState::Unread => sessions::mark_session_unread(&session_id)?,
     };
+    notify_ui_events([
+        UiMutationEvent::SessionListChanged {
+            workspace_id: workspace_id.clone(),
+        },
+        UiMutationEvent::WorkspaceChanged { workspace_id },
+    ]);
     output::print_ok(cli, &format!("Marked {session_id} as {state:?}"));
     Ok(())
 }
@@ -231,6 +246,7 @@ fn update_settings(
         "#,
         params![session_id, model, effort, permission_mode],
     )?;
+    notify_ui_event(UiMutationEvent::SessionListChanged { workspace_id });
     output::print_ok(cli, "Session settings updated");
     Ok(())
 }

@@ -4,9 +4,10 @@ use anyhow::Result;
 
 use crate::repos;
 use crate::service;
+use crate::ui_sync::UiMutationEvent;
 
 use super::args::{Cli, RepoAction};
-use super::output;
+use super::{notify_ui_event, notify_ui_events, output};
 
 pub fn dispatch(action: &RepoAction, cli: &Cli) -> Result<()> {
     match action {
@@ -99,6 +100,14 @@ fn show(repo_ref: &str, cli: &Cli) -> Result<()> {
 
 fn add(path: &str, cli: &Cli) -> Result<()> {
     let response = service::add_repository_from_local_path(path)?;
+    let mut events = vec![UiMutationEvent::RepositoryListChanged];
+    if response.created_workspace_id.is_some() {
+        events.push(UiMutationEvent::WorkspaceListChanged);
+    }
+    events.push(UiMutationEvent::WorkspaceChanged {
+        workspace_id: response.selected_workspace_id.clone(),
+    });
+    notify_ui_events(events);
     output::print(cli, &response, |r| {
         let mut lines = Vec::new();
         if r.created_repository {
@@ -117,6 +126,10 @@ fn add(path: &str, cli: &Cli) -> Result<()> {
 fn delete(repo_ref: &str, cli: &Cli) -> Result<()> {
     let id = service::resolve_repo_ref(repo_ref)?;
     repos::delete_repository_cascade(&id)?;
+    notify_ui_events([
+        UiMutationEvent::RepositoryListChanged,
+        UiMutationEvent::WorkspaceListChanged,
+    ]);
     output::print_ok(cli, &format!("Deleted repository {id}"));
     Ok(())
 }
@@ -124,6 +137,7 @@ fn delete(repo_ref: &str, cli: &Cli) -> Result<()> {
 fn default_branch(repo_ref: &str, branch: &str, cli: &Cli) -> Result<()> {
     let id = service::resolve_repo_ref(repo_ref)?;
     repos::update_repository_default_branch(&id, branch)?;
+    notify_ui_event(UiMutationEvent::RepositoryChanged { repo_id: id });
     output::print_ok(cli, &format!("Default branch set to {branch}"));
     Ok(())
 }
@@ -131,6 +145,7 @@ fn default_branch(repo_ref: &str, branch: &str, cli: &Cli) -> Result<()> {
 fn update_remote(repo_ref: &str, remote: &str, cli: &Cli) -> Result<()> {
     let id = service::resolve_repo_ref(repo_ref)?;
     let response = repos::update_repository_remote(&id, remote)?;
+    notify_ui_event(UiMutationEvent::RepositoryChanged { repo_id: id });
     output::print(cli, &response, |r| {
         format!(
             "Remote set to {remote}. Orphaned workspace target branches: {}",
@@ -208,6 +223,7 @@ fn update_scripts(
         run_val.as_deref(),
         archive_val.as_deref(),
     )?;
+    notify_ui_event(UiMutationEvent::RepositoryChanged { repo_id: id });
     output::print_ok(cli, "Scripts updated");
     Ok(())
 }
@@ -254,6 +270,7 @@ fn update_prefs(
         prefs.general = Some(v.to_string());
     }
     repos::update_repo_preferences(&id, &prefs)?;
+    notify_ui_event(UiMutationEvent::RepositoryChanged { repo_id: id });
     output::print_ok(cli, "Preferences updated");
     Ok(())
 }

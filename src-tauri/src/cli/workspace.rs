@@ -5,6 +5,7 @@ use anyhow::{bail, Context, Result};
 use crate::git_ops;
 use crate::models::workspaces as workspace_models;
 use crate::service;
+use crate::ui_sync::UiMutationEvent;
 use crate::workspace_derived_status::DerivedStatus;
 use crate::workspace_state::WorkspaceState;
 use crate::workspaces;
@@ -13,7 +14,7 @@ use super::args::{
     BranchAction, Cli, LinkedDirsAction, ManualStatus, ManualStatusAction, ReadState,
     TargetBranchAction, WorkspaceAction,
 };
-use super::output;
+use super::{notify_ui_event, notify_ui_events, output};
 
 pub fn dispatch(action: &WorkspaceAction, cli: &Cli) -> Result<()> {
     match action {
@@ -194,6 +195,12 @@ fn show(workspace_ref: &str, cli: &Cli) -> Result<()> {
 fn new(repo_ref: &str, cli: &Cli) -> Result<()> {
     let repo_id = service::resolve_repo_ref(repo_ref)?;
     let response = service::create_workspace_from_repo_impl(&repo_id)?;
+    notify_ui_events([
+        UiMutationEvent::WorkspaceListChanged,
+        UiMutationEvent::WorkspaceChanged {
+            workspace_id: response.created_workspace_id.clone(),
+        },
+    ]);
     if cli.quiet && !cli.json {
         println!("{}", response.created_workspace_id);
         return Ok(());
@@ -209,6 +216,12 @@ fn new(repo_ref: &str, cli: &Cli) -> Result<()> {
 fn delete(workspace_ref: &str, cli: &Cli) -> Result<()> {
     let id = service::resolve_workspace_ref(workspace_ref)?;
     workspaces::permanently_delete_workspace(&id)?;
+    notify_ui_events([
+        UiMutationEvent::WorkspaceListChanged,
+        UiMutationEvent::WorkspaceChanged {
+            workspace_id: id.clone(),
+        },
+    ]);
     output::print_ok(cli, &format!("Deleted workspace {id}"));
     Ok(())
 }
@@ -216,12 +229,24 @@ fn delete(workspace_ref: &str, cli: &Cli) -> Result<()> {
 fn archive(workspace_ref: &str, cli: &Cli) -> Result<()> {
     let id = service::resolve_workspace_ref(workspace_ref)?;
     let response = workspaces::archive_workspace_impl(&id)?;
+    notify_ui_events([
+        UiMutationEvent::WorkspaceListChanged,
+        UiMutationEvent::WorkspaceChanged {
+            workspace_id: id.clone(),
+        },
+    ]);
     output::print(cli, &response, |_| format!("Archived workspace {id}"))
 }
 
 fn restore(workspace_ref: &str, target_branch: Option<&str>, cli: &Cli) -> Result<()> {
     let id = service::resolve_workspace_ref(workspace_ref)?;
     let response = workspaces::restore_workspace_impl(&id, target_branch)?;
+    notify_ui_events([
+        UiMutationEvent::WorkspaceListChanged,
+        UiMutationEvent::WorkspaceChanged {
+            workspace_id: id.clone(),
+        },
+    ]);
     output::print(cli, &response, |_| format!("Restored workspace {id}"))
 }
 
@@ -279,6 +304,9 @@ fn format_status(s: &git_ops::WorkspaceGitActionStatus) -> String {
 fn pin(workspace_ref: &str, cli: &Cli) -> Result<()> {
     let id = service::resolve_workspace_ref(workspace_ref)?;
     workspaces::pin_workspace(&id)?;
+    notify_ui_event(UiMutationEvent::WorkspaceChanged {
+        workspace_id: id.clone(),
+    });
     output::print_ok(cli, &format!("Pinned {id}"));
     Ok(())
 }
@@ -286,6 +314,9 @@ fn pin(workspace_ref: &str, cli: &Cli) -> Result<()> {
 fn unpin(workspace_ref: &str, cli: &Cli) -> Result<()> {
     let id = service::resolve_workspace_ref(workspace_ref)?;
     workspaces::unpin_workspace(&id)?;
+    notify_ui_event(UiMutationEvent::WorkspaceChanged {
+        workspace_id: id.clone(),
+    });
     output::print_ok(cli, &format!("Unpinned {id}"));
     Ok(())
 }
@@ -296,6 +327,9 @@ fn mark(state: ReadState, workspace_ref: &str, cli: &Cli) -> Result<()> {
         ReadState::Read => workspaces::mark_workspace_read(&id)?,
         ReadState::Unread => workspaces::mark_workspace_unread(&id)?,
     };
+    notify_ui_event(UiMutationEvent::WorkspaceChanged {
+        workspace_id: id.clone(),
+    });
     output::print_ok(cli, &format!("Marked {id} as {state:?}"));
     Ok(())
 }
@@ -315,11 +349,15 @@ fn manual_status(action: &ManualStatusAction, cli: &Cli) -> Result<()> {
                 ManualStatus::Canceled => DerivedStatus::Canceled,
             };
             workspaces::set_workspace_manual_status(&id, Some(derived))?;
+            notify_ui_event(UiMutationEvent::WorkspaceChanged {
+                workspace_id: id.clone(),
+            });
             output::print_ok(cli, &format!("Manual status set to {status:?}"));
         }
         ManualStatusAction::Clear { workspace_ref } => {
             let id = service::resolve_workspace_ref(workspace_ref)?;
             workspaces::set_workspace_manual_status(&id, None)?;
+            notify_ui_event(UiMutationEvent::WorkspaceChanged { workspace_id: id });
             output::print_ok(cli, "Manual status cleared");
         }
     }
@@ -345,6 +383,7 @@ fn branch(action: &BranchAction, cli: &Cli) -> Result<()> {
         } => {
             let id = service::resolve_workspace_ref(workspace_ref)?;
             workspaces::rename_workspace_branch(&id, new_branch)?;
+            notify_ui_event(UiMutationEvent::WorkspaceGitStateChanged { workspace_id: id });
             output::print_ok(cli, &format!("Renamed branch to {new_branch}"));
             Ok(())
         }
@@ -368,6 +407,7 @@ fn target_branch(action: &TargetBranchAction, cli: &Cli) -> Result<()> {
         } => {
             let id = service::resolve_workspace_ref(workspace_ref)?;
             let response = workspaces::update_intended_target_branch(&id, branch)?;
+            notify_ui_event(UiMutationEvent::WorkspaceGitStateChanged { workspace_id: id });
             output::print(cli, &response, |_| format!("Target branch set to {branch}"))
         }
     }
@@ -376,18 +416,26 @@ fn target_branch(action: &TargetBranchAction, cli: &Cli) -> Result<()> {
 fn sync(workspace_ref: &str, cli: &Cli) -> Result<()> {
     let id = service::resolve_workspace_ref(workspace_ref)?;
     let response = workspaces::sync_workspace_with_target_branch(&id)?;
+    notify_ui_event(UiMutationEvent::WorkspaceGitStateChanged { workspace_id: id });
     output::print(cli, &response, |r| format!("Sync outcome: {:?}", r.outcome))
 }
 
 fn push(workspace_ref: &str, cli: &Cli) -> Result<()> {
     let id = service::resolve_workspace_ref(workspace_ref)?;
     let response = workspaces::push_workspace_to_remote(&id)?;
+    notify_ui_event(UiMutationEvent::WorkspaceGitStateChanged {
+        workspace_id: id.clone(),
+    });
+    notify_ui_event(UiMutationEvent::WorkspacePrChanged {
+        workspace_id: id.clone(),
+    });
     output::print(cli, &response, |_| format!("Pushed {id}"))
 }
 
 fn fetch(workspace_ref: &str, cli: &Cli) -> Result<()> {
     let id = service::resolve_workspace_ref(workspace_ref)?;
     let response = workspaces::prefetch_remote_refs(Some(&id), None)?;
+    notify_ui_event(UiMutationEvent::WorkspaceGitStateChanged { workspace_id: id });
     output::print(cli, &response, |_| "Fetched remote refs".to_string())
 }
 
@@ -411,6 +459,7 @@ fn linked_dirs(action: &LinkedDirsAction, cli: &Cli) -> Result<()> {
             let id = service::resolve_workspace_ref(workspace_ref)?;
             let normalized =
                 workspaces::set_workspace_linked_directories(&id, directories.clone())?;
+            notify_ui_event(UiMutationEvent::WorkspaceChanged { workspace_id: id });
             output::print(cli, &normalized, |items| {
                 format!("Linked directories:\n{}", items.join("\n"))
             })
@@ -425,6 +474,7 @@ fn linked_dirs(action: &LinkedDirsAction, cli: &Cli) -> Result<()> {
                 existing.push(directory.clone());
             }
             let normalized = workspaces::set_workspace_linked_directories(&id, existing)?;
+            notify_ui_event(UiMutationEvent::WorkspaceChanged { workspace_id: id });
             output::print(cli, &normalized, |items| items.join("\n"))
         }
         LinkedDirsAction::Remove {
@@ -439,6 +489,7 @@ fn linked_dirs(action: &LinkedDirsAction, cli: &Cli) -> Result<()> {
                 bail!("Directory '{directory}' was not linked");
             }
             let normalized = workspaces::set_workspace_linked_directories(&id, filtered)?;
+            notify_ui_event(UiMutationEvent::WorkspaceChanged { workspace_id: id });
             output::print(cli, &normalized, |items| items.join("\n"))
         }
         LinkedDirsAction::Candidates { exclude } => {

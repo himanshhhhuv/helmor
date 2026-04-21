@@ -6,9 +6,10 @@ use anyhow::{bail, Result};
 use rusqlite::params;
 
 use crate::settings as settings_store;
+use crate::ui_sync::UiMutationEvent;
 
 use super::args::{Cli, SettingsAction};
-use super::output;
+use super::{notify_ui_event, output};
 
 pub fn dispatch(action: &SettingsAction, cli: &Cli) -> Result<()> {
     match action {
@@ -29,6 +30,9 @@ fn get(key: &str, cli: &Cli) -> Result<()> {
 
 fn set(key: &str, value: &str, cli: &Cli) -> Result<()> {
     settings_store::upsert_setting_value(key, value)?;
+    notify_ui_event(UiMutationEvent::SettingsChanged {
+        key: Some(key.to_string()),
+    });
     output::print_ok(cli, &format!("Set {key}"));
     Ok(())
 }
@@ -63,6 +67,9 @@ fn delete(key: &str, cli: &Cli) -> Result<()> {
     if removed == 0 {
         bail!("No setting with key '{key}'");
     }
+    notify_ui_event(UiMutationEvent::SettingsChanged {
+        key: Some(key.to_string()),
+    });
     output::print_ok(cli, &format!("Deleted {key}"));
     Ok(())
 }

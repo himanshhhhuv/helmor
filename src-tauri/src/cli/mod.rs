@@ -32,12 +32,23 @@ use anyhow::{Context, Result};
 use clap::{CommandFactory, FromArgMatches};
 
 pub use self::args::{Cli, Commands};
+use crate::ui_sync::UiMutationEvent;
 
 fn installed_cli_name() -> &'static str {
     if crate::data_dir::is_dev() {
         "helmor-dev"
     } else {
         "helmor"
+    }
+}
+
+pub(crate) fn notify_ui_event(event: UiMutationEvent) {
+    let _ = crate::ui_sync::notify_running_app(event);
+}
+
+pub(crate) fn notify_ui_events(events: impl IntoIterator<Item = UiMutationEvent>) {
+    for event in events {
+        notify_ui_event(event);
     }
 }
 
