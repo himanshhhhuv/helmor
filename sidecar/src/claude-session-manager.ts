@@ -22,9 +22,9 @@ import {
 	claudeModelSupportsFastMode,
 } from "./claude-model-overrides.js";
 import type { SidecarEmitter } from "./emitter.js";
-import { resolveGitAccessDirectories } from "./git-access.js";
 import { readImageWithResize } from "./image-resize.js";
 import { parseImageRefs } from "./images.js";
+import { prependLinkedDirectoriesContext } from "./linked-directories-context.js";
 import { errorDetails, logger } from "./logger.js";
 import { sortClaudeModels } from "./model-sort.js";
 import { createPushable, type Pushable } from "./pushable-iterable.js";
@@ -395,19 +395,17 @@ export class ClaudeSessionManager implements SessionManager {
 			fastMode,
 		} = params;
 		const abortController = new AbortController();
-		const additionalDirectories = await mergeAdditionalDirectories(
-			cwd,
-			params.additionalDirectories,
-		);
-		// Surface the final list — helpful when debugging "/add-dir
-		// didn't work" reports. Runs once per turn so volume is low.
+		const additionalDirectories = [...(params.additionalDirectories ?? [])];
 		logger.info(`[${requestId}] claude additionalDirectories resolved`, {
-			user: params.additionalDirectories ?? [],
-			merged: additionalDirectories,
+			directories: additionalDirectories,
 			cwd: cwd ?? "(none)",
 		});
+		const promptWithContext = prependLinkedDirectoriesContext(
+			prompt,
+			additionalDirectories,
+		);
 
-		const { text, imagePaths } = parseImageRefs(prompt);
+		const { text, imagePaths } = parseImageRefs(promptWithContext);
 		// Always use streaming-input mode so `steer()` can push additional
 		// `SDKUserMessage`s into the same turn. For Claude real steer, the
 		// SDK consumes subsequent pushes as part of the in-flight turn and
@@ -426,6 +424,10 @@ export class ClaudeSessionManager implements SessionManager {
 
 		const effectiveFastMode =
 			fastMode === true && claudeModelSupportsFastMode(model);
+		const additionalDirectoryEnv =
+			additionalDirectories.length > 0
+				? { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1" }
+				: undefined;
 
 		const q = query({
 			prompt: promptSource,
@@ -435,6 +437,7 @@ export class ClaudeSessionManager implements SessionManager {
 				...executableOptions(),
 				cwd: cwd || undefined,
 				...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
+				...(additionalDirectoryEnv ? { env: additionalDirectoryEnv } : {}),
 				model: model || undefined,
 				...(resume ? { resume } : {}),
 				permissionMode: parsePermissionMode(permissionMode),
@@ -762,6 +765,11 @@ export class ClaudeSessionManager implements SessionManager {
 	): Promise<readonly SlashCommandInfo[]> {
 		const { cwd } = params;
 		const abortController = new AbortController();
+		const additionalDirectories = [...(params.additionalDirectories ?? [])];
+		const additionalDirectoryEnv =
+			additionalDirectories.length > 0
+				? { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1" }
+				: undefined;
 
 		let resolveDone: () => void = () => undefined;
 		const donePromise = new Promise<void>((resolve) => {
@@ -789,6 +797,8 @@ export class ClaudeSessionManager implements SessionManager {
 				pathToClaudeCodeExecutable: CLAUDE_CLI_PATH,
 				...executableOptions(),
 				cwd: cwd || undefined,
+				...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
+				...(additionalDirectoryEnv ? { env: additionalDirectoryEnv } : {}),
 				permissionMode: "bypassPermissions",
 				allowDangerouslySkipPermissions: true,
 				includePartialMessages: false,
@@ -1123,31 +1133,4 @@ function extractExitPlanContent(
 		}
 	}
 	return null;
-}
-
-/**
- * Combine the user-configured `/add-dir` paths with the git worktree
- * gitdir/commondir that `resolveGitAccessDirectories` discovers from the
- * cwd. Deduped, preserving the user's ordering first so their choices
- * appear ahead of the infrastructure paths in any SDK-produced output.
- */
-async function mergeAdditionalDirectories(
-	cwd: string | undefined,
-	userDirectories: readonly string[] | undefined,
-): Promise<string[]> {
-	const seen = new Set<string>();
-	const merged: string[] = [];
-	for (const raw of userDirectories ?? []) {
-		const trimmed = raw.trim();
-		if (!trimmed || seen.has(trimmed)) continue;
-		seen.add(trimmed);
-		merged.push(trimmed);
-	}
-	const gitDirs = await resolveGitAccessDirectories(cwd);
-	for (const dir of gitDirs) {
-		if (seen.has(dir)) continue;
-		seen.add(dir);
-		merged.push(dir);
-	}
-	return merged;
 }

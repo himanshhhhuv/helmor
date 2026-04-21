@@ -30,6 +30,7 @@ export interface SendMessageParams {
 
 export interface ListSlashCommandsParams {
 	readonly cwd: string | undefined;
+	readonly additionalDirectories?: readonly string[];
 }
 
 /**

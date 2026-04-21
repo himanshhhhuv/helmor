@@ -677,6 +677,7 @@ export async function listSlashCommands(input: {
 	provider: AgentProvider;
 	workingDirectory?: string | null;
 	repoId?: string | null;
+	workspaceId?: string | null;
 }): Promise<SlashCommandsResponse> {
 	try {
 		return await invoke<SlashCommandsResponse>("list_slash_commands", {
@@ -684,6 +685,7 @@ export async function listSlashCommands(input: {
 				provider: input.provider,
 				workingDirectory: input.workingDirectory ?? null,
 				repoId: input.repoId ?? null,
+				workspaceId: input.workspaceId ?? null,
 			},
 		});
 	} catch (error) {

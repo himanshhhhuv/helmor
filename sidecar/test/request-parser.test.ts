@@ -3,6 +3,7 @@ import {
 	errorMessage,
 	optionalString,
 	parseElicitationResultContent,
+	parseListSlashCommandsParams,
 	parseProvider,
 	parseRequest,
 	parseSendMessageParams,
@@ -246,6 +247,19 @@ describe("parseSendMessageParams", () => {
 		expect(() => parseSendMessageParams({ sessionId: "s1" })).toThrow(
 			"params.prompt must be a string",
 		);
+	});
+});
+
+describe("parseListSlashCommandsParams", () => {
+	test("parses additionalDirectories, trimming and dropping empties", () => {
+		const result = parseListSlashCommandsParams({
+			cwd: "/tmp/workspace",
+			additionalDirectories: ["  /abs/a  ", "", "/abs/b"],
+		});
+		expect(result).toEqual({
+			cwd: "/tmp/workspace",
+			additionalDirectories: ["/abs/a", "/abs/b"],
+		});
 	});
 });
 

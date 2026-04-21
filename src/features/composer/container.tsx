@@ -223,6 +223,11 @@ export const WorkspaceComposerContainer = memo(
 					helmorQueryKeys.workspaceLinkedDirectories(displayedWorkspaceId),
 					returned,
 				);
+				void queryClient.invalidateQueries({
+					predicate: (query) =>
+						query.queryKey[0] === "slashCommands" &&
+						query.queryKey[3] === displayedWorkspaceId,
+				});
 			},
 			onError: (error) => {
 				toast.error(
@@ -499,6 +504,7 @@ export const WorkspaceComposerContainer = memo(
 				slashProvider,
 				workingDirectory,
 				workspaceDetailQuery.data?.repoId ?? null,
+				displayedWorkspaceId,
 			),
 			enabled: Boolean(workingDirectory),
 		});

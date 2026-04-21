@@ -391,6 +391,7 @@ fn deduplicate_branch_name(base: &str, repo_root: &std::path::Path) -> String {
 pub struct ListSlashCommandsRequest {
     pub provider: String,
     pub working_directory: Option<String>,
+    pub workspace_id: Option<String>,
     /// Repo id of the workspace — used to serve a repo-level fallback when the
     /// exact workspace cache is cold (different workspaces on the same repo
     /// usually share the same skill directories).
@@ -424,10 +425,14 @@ pub async fn list_slash_commands(
 ) -> CmdResult<SlashCommandsResponse> {
     let cwd = request.working_directory.as_deref().unwrap_or("");
     let repo_id = request.repo_id.as_deref().unwrap_or("");
+    let additional_directories =
+        lookup_workspace_linked_directories_for_commands(request.workspace_id.as_deref());
     tracing::debug!(
         provider = %request.provider,
         cwd,
+        workspace_id = request.workspace_id.as_deref().unwrap_or(""),
         repo_id,
+        linked_dir_count = additional_directories.len(),
         "list_slash_commands request"
     );
 
@@ -439,7 +444,7 @@ pub async fn list_slash_commands(
             cwd,
             "list_slash_commands: cwd missing, returning empty (cached repo fallback may still apply)"
         );
-        if !repo_id.is_empty() {
+        if additional_directories.is_empty() && !repo_id.is_empty() {
             let rkey = super::slash_commands::repo_key(&request.provider, repo_id);
             if let Some(commands) = cache.get_repo(&rkey) {
                 return Ok(SlashCommandsResponse { commands });
@@ -453,6 +458,7 @@ pub async fn list_slash_commands(
     let ws_key = super::slash_commands::workspace_key(
         &request.provider,
         request.working_directory.as_deref(),
+        &additional_directories,
     );
 
     // 1. Workspace-level exact hit → return instantly + SWR refresh.
@@ -462,7 +468,7 @@ pub async fn list_slash_commands(
     }
 
     // 2. Repo-level fallback → return stale-but-plausible + SWR refresh.
-    if !repo_id.is_empty() {
+    if additional_directories.is_empty() && !repo_id.is_empty() {
         let rkey = super::slash_commands::repo_key(&request.provider, repo_id);
         if let Some(commands) = cache.get_repo(&rkey) {
             tracing::debug!(
@@ -484,7 +490,7 @@ pub async fn list_slash_commands(
         repo_id,
         "list_slash_commands cache miss; fetching full result synchronously"
     );
-    let commands = fetch_from_sidecar(&sidecar, &request)?;
+    let commands = fetch_from_sidecar(&sidecar, &request, &additional_directories)?;
     tracing::debug!(
         provider = %request.provider,
         cwd,
@@ -494,6 +500,23 @@ pub async fn list_slash_commands(
     );
     cache.set(ws_key, request.repo_id.as_deref(), commands.clone());
     Ok(SlashCommandsResponse { commands })
+}
+
+fn lookup_workspace_linked_directories_for_commands(workspace_id: Option<&str>) -> Vec<String> {
+    let Some(workspace_id) = workspace_id else {
+        return Vec::new();
+    };
+    match crate::workspaces::get_workspace_linked_directories(workspace_id) {
+        Ok(dirs) => dirs,
+        Err(err) => {
+            tracing::warn!(
+                workspace_id,
+                error = %err,
+                "Failed to load linked directories for slash commands; falling back to empty list"
+            );
+            Vec::new()
+        }
+    }
 }
 
 /// Prewarm the slash-command cache for a single workspace (both providers).
@@ -540,7 +563,7 @@ pub fn prewarm_slash_command_cache_for_workspace(app: &AppHandle, workspace_id: 
                 );
                 return;
             };
-            dispatch_prewarm_for(&app, root_path, &record.repo_id);
+            dispatch_prewarm_for(&app, &workspace_id, root_path, &record.repo_id);
         });
 }
 
@@ -568,19 +591,28 @@ pub fn prewarm_slash_command_cache(app: &AppHandle) {
         });
 }
 
-fn dispatch_prewarm_for(app: &AppHandle, root_path: &str, repo_id: &str) {
+fn dispatch_prewarm_for(app: &AppHandle, workspace_id: &str, root_path: &str, repo_id: &str) {
     let cache: tauri::State<'_, super::slash_commands::SlashCommandCache> = app.state();
+    let additional_directories =
+        lookup_workspace_linked_directories_for_commands(Some(workspace_id));
     for provider in ["claude", "codex"] {
         let request = ListSlashCommandsRequest {
             provider: provider.to_string(),
             working_directory: Some(root_path.to_string()),
+            workspace_id: Some(workspace_id.to_string()),
             repo_id: Some(repo_id.to_string()),
         };
-        let ws_key = super::slash_commands::workspace_key(provider, Some(root_path));
+        let ws_key = super::slash_commands::workspace_key(
+            provider,
+            Some(root_path),
+            &additional_directories,
+        );
         tracing::debug!(
             provider,
+            workspace_id,
             cwd = root_path,
             repo_id,
+            linked_dir_count = additional_directories.len(),
             "Slash-command prewarm dispatching background refresh"
         );
         spawn_background_refresh(app, &cache, &request, ws_key);
@@ -592,6 +624,7 @@ fn dispatch_prewarm_for(app: &AppHandle, root_path: &str, repo_id: &str) {
 fn fetch_from_sidecar(
     sidecar: &crate::sidecar::ManagedSidecar,
     request: &ListSlashCommandsRequest,
+    additional_directories: &[String],
 ) -> CmdResult<Vec<SlashCommandEntry>> {
     let request_id = Uuid::new_v4().to_string();
 
@@ -599,6 +632,18 @@ fn fetch_from_sidecar(
     params.insert("provider".into(), Value::String(request.provider.clone()));
     if let Some(cwd) = request.working_directory.as_ref() {
         params.insert("cwd".into(), Value::String(cwd.clone()));
+    }
+    if !additional_directories.is_empty() {
+        params.insert(
+            "additionalDirectories".into(),
+            Value::Array(
+                additional_directories
+                    .iter()
+                    .cloned()
+                    .map(Value::String)
+                    .collect(),
+            ),
+        );
     }
 
     let sidecar_req = crate::sidecar::SidecarRequest {
@@ -718,12 +763,15 @@ fn spawn_background_refresh(
             let sidecar_state: tauri::State<'_, crate::sidecar::ManagedSidecar> = app.state();
             let cache_state: tauri::State<'_, super::slash_commands::SlashCommandCache> =
                 app.state();
+            let additional_directories =
+                lookup_workspace_linked_directories_for_commands(request.workspace_id.as_deref());
 
-            match fetch_from_sidecar(&sidecar_state, &request) {
+            match fetch_from_sidecar(&sidecar_state, &request, &additional_directories) {
                 Ok(commands) => {
                     tracing::debug!(
                         provider = %request.provider,
                         cwd = request.working_directory.as_deref().unwrap_or(""),
+                        linked_dir_count = additional_directories.len(),
                         count = commands.len(),
                         "Background slash command refresh succeeded"
                     );

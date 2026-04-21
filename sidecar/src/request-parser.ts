@@ -157,6 +157,10 @@ export function parseListSlashCommandsParams(
 ): ListSlashCommandsParams {
 	return {
 		cwd: optionalString(params, "cwd"),
+		additionalDirectories: parseOptionalStringArray(
+			params,
+			"additionalDirectories",
+		),
 	};
 }
 
