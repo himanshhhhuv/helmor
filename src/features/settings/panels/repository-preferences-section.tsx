@@ -99,7 +99,11 @@ export function RepositoryPreferencesSection({ repoId }: { repoId: string }) {
 									<CollapsibleContent className="pt-4">
 										<Textarea
 											className="min-h-[140px] resize-y bg-app-base/30 font-mono text-[12px]"
-											placeholder="Leave empty to use Helmor's built-in prompt."
+											placeholder={
+												key === "general"
+													? undefined
+													: "Leave empty to use Helmor's built-in prompt."
+											}
 											value={value}
 											onChange={(event) =>
 												setDrafts((current) => ({
