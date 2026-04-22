@@ -231,7 +231,10 @@ export const WorkspaceRowItem = memo(
 						)}
 						<span
 							className={cn(
-								"truncate leading-none",
+								// leading-tight (1.25) instead of leading-none so descenders
+								// (g/j/p/q/y) aren't clipped by truncate's overflow:hidden
+								// when the page is zoomed out (Cmd+-).
+								"truncate leading-tight",
 								selected
 									? row.hasUnread
 										? "font-semibold text-foreground"
