@@ -224,20 +224,7 @@ pub fn get_workspace(workspace_id: &str) -> Result<WorkspaceDetail> {
     Ok(record_to_detail(record))
 }
 
-// ---- Mark read / unread ----
-
-pub fn mark_workspace_read(workspace_id: &str) -> Result<()> {
-    let mut connection = db::open_connection(true)?;
-    let transaction = connection
-        .transaction()
-        .context("Failed to start workspace-read transaction")?;
-
-    sessions::mark_workspace_read_in_transaction(&transaction, workspace_id)?;
-
-    transaction
-        .commit()
-        .context("Failed to commit workspace read transaction")
-}
+// ---- Mark unread ----
 
 pub fn mark_workspace_unread(workspace_id: &str) -> Result<()> {
     let mut connection = db::open_connection(true)?;

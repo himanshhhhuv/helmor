@@ -22,6 +22,7 @@ import {
 	isTextPart,
 	isTodoListPart,
 	isToolCallPart,
+	reasoningLifecycle,
 } from "./shared";
 import { LazyStreamdown } from "./streamdown-loader";
 import { AssistantToolCall, CollapsedToolGroup } from "./tool-call";
@@ -162,8 +163,16 @@ export function ChatAssistantMessage({
 					);
 				}
 				if (isReasoningPart(part)) {
+					const durationSeconds =
+						typeof part.durationMs === "number"
+							? Math.max(1, Math.ceil(part.durationMs / 1000))
+							: undefined;
 					return (
-						<Reasoning key={key} isStreaming={part.streaming === true}>
+						<Reasoning
+							key={key}
+							lifecycle={reasoningLifecycle(part)}
+							duration={durationSeconds}
+						>
 							<ReasoningTrigger />
 							<ReasoningContent fontSize={settings.fontSize}>
 								{part.text}

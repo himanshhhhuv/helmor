@@ -228,6 +228,9 @@ function MainApp() {
 							if (key[0] === "slashCommands") {
 								return false;
 							}
+							if (key[0] === "agentModelSections") {
+								return false;
+							}
 							// Workspace lists are fast local DB queries — always
 							// load fresh to avoid "ghost workspace" errors on startup.
 							if (
@@ -300,6 +303,12 @@ function AppShell({
 	// stays idempotent when interaction-required state churns without the
 	// displayed session changing.
 	const lastMarkedReadSessionIdRef = useRef<string | null>(null);
+	// Bumped whenever the user re-clicks the already-selected workspace. The
+	// mark-session-read effect depends on this tick so a manual "mark as
+	// unread" followed by clicking the same workspace clears the dot, even
+	// though displayedSessionId didn't change.
+	const [workspaceReselectTick, setWorkspaceReselectTick] = useState(0);
+	const lastMarkedReadReselectTickRef = useRef(0);
 
 	const workspaceViewModeRef = useRef<"conversation" | "editor">(
 		"conversation",
@@ -454,11 +463,17 @@ function AppShell({
 			lastMarkedReadSessionIdRef.current = null;
 			return;
 		}
-		if (lastMarkedReadSessionIdRef.current === displayedSessionId) return;
+		if (
+			lastMarkedReadSessionIdRef.current === displayedSessionId &&
+			workspaceReselectTick === lastMarkedReadReselectTickRef.current
+		) {
+			return;
+		}
 
 		const sessionId = displayedSessionId;
 		const workspaceId = selectedWorkspaceIdRef.current;
 		lastMarkedReadSessionIdRef.current = sessionId;
+		lastMarkedReadReselectTickRef.current = workspaceReselectTick;
 
 		// Snapshot for rollback on IPC failure.
 		const previousGroups = queryClient.getQueryData(
@@ -552,7 +567,12 @@ function AppShell({
 				}
 				console.error("[app] mark session read on view:", error);
 			});
-	}, [displayedSessionId, interactionRequiredSessionIds, queryClient]);
+	}, [
+		displayedSessionId,
+		interactionRequiredSessionIds,
+		queryClient,
+		workspaceReselectTick,
+	]);
 
 	useEffect(() => {
 		if (!showOnboarding) return;
@@ -1127,6 +1147,13 @@ function AppShell({
 	const handleSelectWorkspace = useCallback(
 		(workspaceId: string | null) => {
 			if (workspaceId === selectedWorkspaceIdRef.current) {
+				// Re-clicking the currently selected workspace: force the
+				// mark-session-read effect to re-evaluate so a lingering dot
+				// from a manual "mark as unread" clears, without tearing down
+				// the current session view.
+				if (workspaceId !== null) {
+					setWorkspaceReselectTick((tick) => tick + 1);
+				}
 				return;
 			}
 

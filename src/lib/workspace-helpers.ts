@@ -238,9 +238,10 @@ export function clearWorkspaceUnreadFromGroups(
 
 /**
  * Apply "this workspace now has N unread sessions" to the groups cache.
- * Recomputes `hasUnread` / `workspaceUnread` / `unreadSessionCount` as purely
- * derived values. Used for the optimistic patch that drops the sidebar dot
- * the moment the user opens a session — before the IPC + refetch round-trip.
+ * `workspaceUnread` is an independent flag — we only clear it optimistically
+ * when every session becomes read (matching the backend rule in
+ * `clear_workspace_unread_if_no_session_unread_in_transaction`). While any
+ * session is still unread we leave the existing `workspaceUnread` alone.
  */
 export function recomputeWorkspaceUnreadInGroups(
 	groups: WorkspaceGroup[] | undefined,
@@ -250,16 +251,17 @@ export function recomputeWorkspaceUnreadInGroups(
 	if (!groups || !workspaceId) return groups;
 	return groups.map((group) => ({
 		...group,
-		rows: group.rows.map((row) =>
-			row.id === workspaceId
-				? {
-						...row,
-						unreadSessionCount: remainingUnreadSessionCount,
-						workspaceUnread: remainingUnreadSessionCount > 0 ? 1 : 0,
-						hasUnread: remainingUnreadSessionCount > 0,
-					}
-				: row,
-		),
+		rows: group.rows.map((row) => {
+			if (row.id !== workspaceId) return row;
+			const nextWorkspaceUnread =
+				remainingUnreadSessionCount > 0 ? (row.workspaceUnread ?? 0) : 0;
+			return {
+				...row,
+				unreadSessionCount: remainingUnreadSessionCount,
+				workspaceUnread: nextWorkspaceUnread,
+				hasUnread: remainingUnreadSessionCount > 0 || nextWorkspaceUnread > 0,
+			};
+		}),
 	}));
 }
 
@@ -267,11 +269,13 @@ export function recomputeWorkspaceDetailUnread(
 	detail: WorkspaceDetail,
 	remainingUnreadSessionCount: number,
 ): WorkspaceDetail {
+	const nextWorkspaceUnread =
+		remainingUnreadSessionCount > 0 ? (detail.workspaceUnread ?? 0) : 0;
 	return {
 		...detail,
 		unreadSessionCount: remainingUnreadSessionCount,
-		workspaceUnread: remainingUnreadSessionCount > 0 ? 1 : 0,
-		hasUnread: remainingUnreadSessionCount > 0,
+		workspaceUnread: nextWorkspaceUnread,
+		hasUnread: remainingUnreadSessionCount > 0 || nextWorkspaceUnread > 0,
 	};
 }
 

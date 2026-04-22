@@ -496,16 +496,18 @@ export function useWorkspacesSidebarController({
 				helmorQueryKeys.workspaceDetail(workspaceId),
 			);
 
-			// Optimistic flash of the red dot. `workspaceUnread` /
-			// `unreadSessionCount` are derived from sessions on the backend, so
-			// we only flip `hasUnread` here and rely on the post-IPC
-			// invalidation to backfill the real per-session counts.
+			// Optimistic flash of the red dot. The backend sets
+			// `workspaces.unread = 1` directly without touching sessions, so
+			// mirror that here: flip `workspaceUnread` + `hasUnread`, leave
+			// `unreadSessionCount` alone. The post-IPC invalidation backfills.
 			queryClient.setQueryData(helmorQueryKeys.workspaceGroups, (current) =>
 				Array.isArray(current)
 					? (current as typeof groups).map((group) => ({
 							...group,
 							rows: group.rows.map((row) =>
-								row.id === workspaceId ? { ...row, hasUnread: true } : row,
+								row.id === workspaceId
+									? { ...row, hasUnread: true, workspaceUnread: 1 }
+									: row,
 							),
 						}))
 					: current,
@@ -514,7 +516,7 @@ export function useWorkspacesSidebarController({
 				Array.isArray(current)
 					? (current as typeof archivedSummaries).map((summary) =>
 							summary.id === workspaceId
-								? { ...summary, hasUnread: true }
+								? { ...summary, hasUnread: true, workspaceUnread: 1 }
 								: summary,
 						)
 					: current,
@@ -526,6 +528,7 @@ export function useWorkspacesSidebarController({
 						? {
 								...(current as Record<string, unknown>),
 								hasUnread: true,
+								workspaceUnread: 1,
 							}
 						: current,
 			);

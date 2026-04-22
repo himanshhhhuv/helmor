@@ -106,6 +106,158 @@ fn accumulate_tool_use_blocks() {
 }
 
 #[test]
+fn handle_assistant_stamps_thinking_block_as_just_finished_live() {
+    // When the SDK's finalized `assistant` event arrives, the accumulator
+    // must mark thinking blocks with `__is_streaming: false` and a
+    // measured `__duration_ms` so the frontend keeps the block open and
+    // shows "Thought for Ns" — even when the streaming partial window
+    // was too short for React to ever render with `streaming=true`.
+    let mut acc = StreamAccumulator::new("claude", "opus");
+    acc.push_event(
+        &json!({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "thinking"}
+            }
+        }),
+        "",
+    );
+    acc.push_event(
+        &json!({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "thinking_delta", "thinking": "quick thought"}
+            }
+        }),
+        "",
+    );
+
+    let full_msg = json!({
+        "type": "assistant",
+        "message": {
+            "id": "msg1",
+            "role": "assistant",
+            "content": [{"type": "thinking", "thinking": "quick thought"}]
+        }
+    });
+    acc.push_event(&full_msg, &full_msg.to_string());
+
+    let snapshot = acc.snapshot("ctx", "sess");
+    let block = &snapshot.last().unwrap().parsed.as_ref().unwrap()["message"]["content"][0];
+    assert_eq!(block["__is_streaming"], json!(false));
+    assert!(block["__duration_ms"].is_number());
+}
+
+#[test]
+fn flush_assistant_strips_live_only_is_streaming_from_persisted_turn() {
+    // `__is_streaming: false` is a render-only marker. If we leak it into
+    // the DB row, historical reloads resurrect each old thinking block as
+    // a fresh "just completed" one and keep them all expanded.
+    let mut acc = StreamAccumulator::new("claude", "opus");
+    acc.push_event(
+        &json!({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "thinking"}
+            }
+        }),
+        "",
+    );
+    acc.push_event(
+        &json!({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "thinking_delta", "thinking": "pondering"}
+            }
+        }),
+        "",
+    );
+    let full_msg = json!({
+        "type": "assistant",
+        "message": {
+            "id": "msg1",
+            "role": "assistant",
+            "content": [{"type": "thinking", "thinking": "pondering"}]
+        }
+    });
+    acc.push_event(&full_msg, &full_msg.to_string());
+
+    // Second user turn triggers the implicit flush of the previous
+    // assistant turn.
+    let user_msg = json!({
+        "type": "user",
+        "message": {"role": "user", "content": "next"}
+    });
+    acc.push_event(&user_msg, &user_msg.to_string());
+
+    let turn = acc.turn_at(0);
+    let parsed: Value = serde_json::from_str(&turn.content_json).unwrap();
+    let block = &parsed["message"]["content"][0];
+    assert!(block.get("__is_streaming").is_none());
+    assert!(block["__duration_ms"].is_number());
+}
+
+#[test]
+fn materialize_partial_keeps_thinking_open_live_and_strips_flag_for_persistence() {
+    // Abort mid-thinking. The UI should keep the block expanded
+    // (`__is_streaming: false` in `collected[]`) while the persisted
+    // turn drops the live-only marker so a later historical reload
+    // doesn't treat this block as "just completed".
+    let mut acc = StreamAccumulator::new("claude", "opus");
+    acc.push_event(
+        &json!({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "thinking"}
+            }
+        }),
+        "",
+    );
+    acc.push_event(
+        &json!({
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "thinking_delta", "thinking": "interrupted"}
+            }
+        }),
+        "",
+    );
+    acc.materialize_partial("ctx", "sess");
+
+    // Live side: `collected[]` thinking block has `__is_streaming: false`
+    // + `__duration_ms` so the frontend keeps it open.
+    let collected = acc.collected();
+    let live_block = &collected
+        .last()
+        .expect("collected has the materialized partial")
+        .parsed
+        .as_ref()
+        .expect("parsed JSON present")["message"]["content"][0];
+    assert_eq!(live_block["__is_streaming"], json!(false));
+    assert!(live_block["__duration_ms"].is_number());
+
+    // Persist side: `turns` has the block WITHOUT `__is_streaming` but
+    // keeps `__duration_ms` — mirrors `flush_assistant` semantics.
+    let turn = acc.turn_at(0);
+    let parsed: Value = serde_json::from_str(&turn.content_json).unwrap();
+    let persisted_block = &parsed["message"]["content"][0];
+    assert!(persisted_block.get("__is_streaming").is_none());
+    assert!(persisted_block["__duration_ms"].is_number());
+}
+
+#[test]
 fn full_assistant_clears_blocks() {
     let mut acc = StreamAccumulator::new("claude", "opus");
     // Add a text block

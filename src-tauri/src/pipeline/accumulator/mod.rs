@@ -204,6 +204,18 @@ fn assistant_block_type(block: &Value) -> Option<&str> {
     block.get("type").and_then(Value::as_str)
 }
 
+/// `__is_streaming` is a live-only marker consumed by the frontend to keep
+/// finalized reasoning blocks expanded in the current session. Persistence
+/// paths (`flush_assistant`, `materialize_partial`) strip it so historical
+/// reloads don't resurrect every old thinking block as "just completed".
+fn strip_is_streaming_markers(blocks: &mut [Value]) {
+    for block in blocks.iter_mut() {
+        if let Some(obj) = block.as_object_mut() {
+            obj.remove("__is_streaming");
+        }
+    }
+}
+
 fn cumulative_assistant_snapshot_prefix_matches(prev: &[Value], next: &[Value]) -> bool {
     if next.len() < prev.len() {
         return false;
@@ -680,10 +692,27 @@ impl StreamAccumulator {
         };
 
         if let Some(message) = partial {
+            // The live copy keeps `__is_streaming: false` so the aborted
+            // reasoning block still renders open. The persisted copy has
+            // it stripped — mirror of what `flush_assistant` does on the
+            // happy path.
+            let content_json_for_persist = match serde_json::from_str::<Value>(&message.raw_json) {
+                Ok(mut parsed) => {
+                    if let Some(blocks) = parsed
+                        .get_mut("message")
+                        .and_then(|m| m.get_mut("content"))
+                        .and_then(Value::as_array_mut)
+                    {
+                        strip_is_streaming_markers(blocks);
+                    }
+                    serde_json::to_string(&parsed).unwrap_or_else(|_| message.raw_json.clone())
+                }
+                Err(_) => message.raw_json.clone(),
+            };
             self.turns.push(CollectedTurn {
                 id: message.id.clone(),
                 role: MessageRole::Assistant,
-                content_json: message.raw_json.clone(),
+                content_json: content_json_for_persist,
             });
             self.collected.push(message);
         }
@@ -791,6 +820,25 @@ impl StreamAccumulator {
         self.cur_asst_id = msg_id.map(str::to_string);
         self.cur_asst_template = Some(value.clone());
 
+        // Snapshot the per-block start times of any in-flight thinking
+        // blocks BEFORE finalize_blocks clears `self.blocks`. Keyed by
+        // part_id (the SDK's block.index-derived id) so the stamping pass
+        // below can line each assistant thinking block up with the
+        // streaming block it came from and compute the live duration.
+        let thinking_durations: HashMap<String, u64> = self
+            .blocks
+            .values()
+            .filter_map(|block| match block {
+                streaming::StreamingBlock::Thinking {
+                    id, started_at_ms, ..
+                } => {
+                    let elapsed = streaming::now_ms().saturating_sub(*started_at_ms);
+                    Some((id.clone(), elapsed))
+                }
+                _ => None,
+            })
+            .collect();
+
         // The Claude SDK sends each finalized content block as its own
         // `assistant` event with the SAME msg_id — i.e., delta-style,
         // not cumulative snapshot. Stamp every block with a globally-
@@ -806,23 +854,35 @@ impl StreamAccumulator {
             let cumulative_snapshot = same_msg_id
                 && cumulative_assistant_snapshot_prefix_matches(&self.cur_asst_blocks, blocks);
 
+            // Snapshot the previous blocks BEFORE clearing so the stamping
+            // loop below can reach back to the prior cumulative snapshot
+            // (thinking duration carry-over, stable `__part_id` reuse).
+            let prev_blocks: Vec<Value> = if cumulative_snapshot {
+                std::mem::take(&mut self.cur_asst_blocks)
+            } else {
+                Vec::new()
+            };
+
             // Cumulative: reset count so reused indices produce stable part_ids.
             // Non-cumulative new-msg: clear buffer but keep count monotonic so
             // part_ids don't collide with the previous message when two events
             // share the same active turn_id (e.g. no explicit `message.id`).
             if cumulative_snapshot {
-                self.cur_asst_blocks.clear();
                 self.cur_asst_block_count = 0;
             } else if !same_msg_id {
                 self.cur_asst_blocks.clear();
             }
             let mut stamped_blocks = blocks.clone();
             for (i, block) in stamped_blocks.iter_mut().enumerate() {
+                let is_thinking = block.get("type").and_then(Value::as_str) == Some("thinking");
+                let prev_block = if cumulative_snapshot {
+                    prev_blocks.get(i).and_then(Value::as_object)
+                } else {
+                    None
+                };
                 if let Some(obj) = block.as_object_mut() {
                     let part_id = if cumulative_snapshot {
-                        self.cur_asst_blocks
-                            .get(i)
-                            .and_then(Value::as_object)
+                        prev_block
                             .and_then(|prev| prev.get("__part_id"))
                             .and_then(Value::as_str)
                             .map(str::to_string)
@@ -830,7 +890,22 @@ impl StreamAccumulator {
                     } else {
                         format!("{turn_id}:blk:{}", self.cur_asst_block_count + i)
                     };
-                    obj.insert("__part_id".to_string(), Value::String(part_id));
+                    obj.insert("__part_id".to_string(), Value::String(part_id.clone()));
+                    if is_thinking {
+                        // Mark finalized live thinking blocks so the
+                        // frontend keeps them open + shows "Thought for Ns"
+                        // even when the streaming partial window was too
+                        // narrow for React to ever observe streaming=true.
+                        obj.insert("__is_streaming".to_string(), Value::Bool(false));
+                        let duration = thinking_durations.get(&part_id).copied().or_else(|| {
+                            prev_block
+                                .and_then(|prev| prev.get("__duration_ms"))
+                                .and_then(Value::as_u64)
+                        });
+                        if let Some(ms) = duration {
+                            obj.insert("__duration_ms".to_string(), Value::from(ms));
+                        }
+                    }
                 }
             }
             if cumulative_snapshot {
@@ -1001,8 +1076,10 @@ impl StreamAccumulator {
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
         if let Some(mut template) = self.cur_asst_template.take() {
+            let mut blocks_for_persist = std::mem::take(&mut self.cur_asst_blocks);
+            strip_is_streaming_markers(&mut blocks_for_persist);
             if let Some(message) = template.get_mut("message") {
-                message["content"] = Value::Array(std::mem::take(&mut self.cur_asst_blocks));
+                message["content"] = Value::Array(blocks_for_persist);
             }
             self.turns.push(CollectedTurn {
                 id: turn_id,

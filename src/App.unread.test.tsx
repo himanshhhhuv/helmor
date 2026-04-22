@@ -10,7 +10,6 @@ const apiMocks = vi.hoisted(() => ({
 	loadWorkspaceSessions: vi.fn(),
 	loadSessionThreadMessages: vi.fn(),
 	loadSessionAttachments: vi.fn(),
-	markWorkspaceRead: vi.fn(),
 	markSessionRead: vi.fn(),
 	markSessionUnread: vi.fn(),
 }));
@@ -57,7 +56,6 @@ vi.mock("./lib/api", async (importOriginal) => {
 		loadSessionMessages: apiMocks.loadSessionThreadMessages,
 		loadSessionThreadMessages: apiMocks.loadSessionThreadMessages,
 		loadSessionAttachments: apiMocks.loadSessionAttachments,
-		markWorkspaceRead: apiMocks.markWorkspaceRead,
 		markSessionRead: apiMocks.markSessionRead,
 		markSessionUnread: apiMocks.markSessionUnread,
 	};
@@ -81,7 +79,6 @@ describe("App unread lifecycle", () => {
 		apiMocks.loadWorkspaceSessions.mockReset();
 		apiMocks.loadSessionThreadMessages.mockReset();
 		apiMocks.loadSessionAttachments.mockReset();
-		apiMocks.markWorkspaceRead.mockReset();
 		apiMocks.markSessionRead.mockReset();
 		apiMocks.markSessionUnread.mockReset();
 
@@ -165,11 +162,6 @@ describe("App unread lifecycle", () => {
 		]);
 		apiMocks.loadSessionThreadMessages.mockResolvedValue([]);
 		apiMocks.loadSessionAttachments.mockResolvedValue([]);
-		apiMocks.markWorkspaceRead.mockImplementation(async () => {
-			unreadRuntime.workspaceUnread = 0;
-			unreadRuntime.unreadSessionCount = 0;
-			unreadRuntime.sessionUnreadCount = 0;
-		});
 		apiMocks.markSessionRead.mockImplementation(async () => {
 			unreadRuntime.sessionUnreadCount = 0;
 			unreadRuntime.unreadSessionCount = 0;
@@ -178,9 +170,8 @@ describe("App unread lifecycle", () => {
 		apiMocks.markSessionUnread.mockImplementation(async () => {
 			unreadRuntime.unreadSessionCount = 1;
 			unreadRuntime.sessionUnreadCount = 1;
-			// Backend's sync_workspace_unread mirrors this onto the workspace
-			// flag; reflect it here so tests see the same shape.
-			unreadRuntime.workspaceUnread = 1;
+			// Backend's `mark_session_unread` leaves `workspaces.unread` alone —
+			// hasUnread is derived as `workspace.unread OR (any session unread)`.
 		});
 	});
 
@@ -188,15 +179,12 @@ describe("App unread lifecycle", () => {
 		cleanup();
 	});
 
-	it("clears the displayed session's unread but never bulk-clears the workspace", async () => {
+	it("clears the displayed session's unread when the workspace is opened", async () => {
 		render(<App />);
 
 		await waitFor(() => {
 			expect(apiMocks.markSessionRead).toHaveBeenCalledWith("session-1");
 		});
-		// Selecting a workspace must NOT trigger the bulk workspace clear —
-		// only opening individual sessions clears them, one at a time.
-		expect(apiMocks.markWorkspaceRead).not.toHaveBeenCalled();
 	});
 
 	it("re-fetches workspace groups after clearing a session so the sidebar / dock badge clear", async () => {

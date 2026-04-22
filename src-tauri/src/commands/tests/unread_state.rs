@@ -96,56 +96,7 @@ fn mark_session_read_clears_session_and_workspace_unread() {
 }
 
 #[test]
-fn mark_workspace_read_clears_all_workspace_sessions() {
-    let _guard = TEST_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let harness = ArchiveTestHarness::new(true);
-    let connection = Connection::open(crate::data_dir::db_path().unwrap()).unwrap();
-
-    connection
-        .execute(
-            "UPDATE sessions SET unread_count = 1 WHERE id = ?1",
-            [&harness.session_id],
-        )
-        .unwrap();
-    connection
-        .execute(
-            r#"
-            INSERT INTO sessions (
-              id, workspace_id, title, agent_type, status, model, permission_mode,
-              provider_session_id, unread_count, context_token_count, context_used_percent,
-              thinking_enabled, fast_mode, agent_personality,
-              created_at, updated_at, last_user_message_at, resume_session_at,
-              is_hidden, is_compacting
-            ) VALUES ('session-archive-2', ?1, 'Second session', 'claude', 'idle', 'opus', 'default', NULL, 2, 0, NULL, 0, 0, 'none', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL, 0, 0)
-            "#,
-            [&harness.workspace_id],
-        )
-        .unwrap();
-    connection
-        .execute(
-            "UPDATE workspaces SET unread = 1 WHERE id = ?1",
-            [&harness.workspace_id],
-        )
-        .unwrap();
-
-    workspaces::mark_workspace_read(&harness.workspace_id).unwrap();
-
-    let (unread_session_sum, workspace_unread): (i64, i64) = connection
-        .query_row(
-            "SELECT (SELECT COALESCE(SUM(unread_count), 0) FROM sessions WHERE workspace_id = ?1), (SELECT unread FROM workspaces WHERE id = ?1)",
-            [&harness.workspace_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .unwrap();
-
-    assert_eq!(unread_session_sum, 0);
-    assert_eq!(workspace_unread, 0);
-}
-
-#[test]
-fn mark_session_unread_bumps_session_and_syncs_workspace() {
+fn mark_session_unread_bumps_only_the_session() {
     let _guard = TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -175,8 +126,11 @@ fn mark_session_unread_bumps_session_and_syncs_workspace() {
         )
         .unwrap();
 
+    // Session unread is an independent signal — bumping the session must not
+    // touch the workspace flag. `has_unread` picks up the session via the
+    // derived OR.
     assert_eq!(session_unread, 1);
-    assert_eq!(workspace_unread, 1);
+    assert_eq!(workspace_unread, 0);
 
     // Idempotent — second call must not drift the counter.
     sessions::mark_session_unread(&harness.session_id).unwrap();
@@ -191,7 +145,7 @@ fn mark_session_unread_bumps_session_and_syncs_workspace() {
 }
 
 #[test]
-fn mark_workspace_unread_bumps_a_session_and_derives_workspace_flag() {
+fn mark_workspace_unread_sets_workspace_flag_directly() {
     let _guard = TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -221,7 +175,63 @@ fn mark_workspace_unread_bumps_a_session_and_derives_workspace_flag() {
         )
         .unwrap();
 
-    // Workspace flag derives from the bumped session, never written directly.
-    assert_eq!(session_unread, 1);
+    // Workspace flag is now independent: setting it must not touch sessions.
+    assert_eq!(session_unread, 0);
+    assert_eq!(workspace_unread, 1);
+}
+
+#[test]
+fn mark_session_read_preserves_workspace_unread_while_other_sessions_stay_unread() {
+    let _guard = TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let harness = ArchiveTestHarness::new(true);
+    let connection = Connection::open(crate::data_dir::db_path().unwrap()).unwrap();
+
+    // Two sessions, both unread; workspace flag also set independently.
+    connection
+        .execute(
+            "UPDATE sessions SET unread_count = 1 WHERE id = ?1",
+            [&harness.session_id],
+        )
+        .unwrap();
+    connection
+        .execute(
+            r#"
+            INSERT INTO sessions (
+              id, workspace_id, title, agent_type, status, model, permission_mode,
+              provider_session_id, unread_count, context_token_count, context_used_percent,
+              thinking_enabled, fast_mode, agent_personality,
+              created_at, updated_at, last_user_message_at, resume_session_at,
+              is_hidden, is_compacting
+            ) VALUES ('session-archive-2', ?1, 'Second session', 'claude', 'idle', 'opus', 'default', NULL, 2, 0, NULL, 0, 0, 'none', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL, 0, 0)
+            "#,
+            [&harness.workspace_id],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "UPDATE workspaces SET unread = 1 WHERE id = ?1",
+            [&harness.workspace_id],
+        )
+        .unwrap();
+
+    // Clear the first session only.
+    sessions::mark_session_read(&harness.session_id).unwrap();
+
+    let (first_unread, second_unread, workspace_unread): (i64, i64, i64) = connection
+        .query_row(
+            "SELECT \
+                (SELECT unread_count FROM sessions WHERE id = ?1), \
+                (SELECT unread_count FROM sessions WHERE id = 'session-archive-2'), \
+                (SELECT unread FROM workspaces WHERE id = ?2)",
+            (&harness.session_id, &harness.workspace_id),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+
+    assert_eq!(first_unread, 0);
+    assert_eq!(second_unread, 2);
+    // Workspace flag must stay because the second session still has unread.
     assert_eq!(workspace_unread, 1);
 }
