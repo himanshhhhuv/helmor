@@ -261,4 +261,82 @@ describe("MemoConversationMessage plan review", () => {
 		).toBeInTheDocument();
 		expect(screen.getByText("Done.")).toBeInTheDocument();
 	});
+
+	it("shows duration for a fast reasoning block that mounts already completed", () => {
+		// Fast thinking blocks (sub-frame) never reach the UI with
+		// streaming=true — the first render the Reasoning component sees
+		// already has the block in its completed state. The backend-
+		// provided duration on the reasoning part still has to surface
+		// as "Thought for Ns" instead of falling back to a generic
+		// "Thinking" label that leaves the user with no signal the
+		// reasoning finished.
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-04-20T12:00:00.000Z"));
+
+		const completedMessage: ThreadMessageLike = {
+			id: "assistant-reasoning-fast",
+			role: "assistant",
+			createdAt: "2026-04-20T12:00:00.000Z",
+			streaming: true,
+			content: [
+				{
+					type: "reasoning",
+					id: "assistant-reasoning-fast:blk:0",
+					text: "Figured it out quickly.",
+					streaming: false,
+					durationMs: 3200,
+				},
+				{
+					type: "text",
+					id: "assistant-reasoning-fast:blk:1",
+					text: "Answer.",
+				},
+			],
+		};
+
+		render(
+			<MemoConversationMessage
+				message={completedMessage}
+				sessionId="session-1"
+				itemIndex={0}
+			/>,
+		);
+
+		expect(screen.getByText("Thought for 4s")).toBeInTheDocument();
+		// The block should be open (not auto-collapsed) because the
+		// pipeline signaled a just-completed live reasoning run.
+		expect(screen.getByText("Figured it out quickly.")).toBeInTheDocument();
+	});
+
+	it("keeps a historical reasoning block collapsed without a duration", () => {
+		const historicalMessage: ThreadMessageLike = {
+			id: "assistant-reasoning-history",
+			role: "assistant",
+			createdAt: "2026-04-19T12:00:00.000Z",
+			content: [
+				{
+					type: "reasoning",
+					id: "assistant-reasoning-history:blk:0",
+					text: "Old thinking content.",
+				},
+				{
+					type: "text",
+					id: "assistant-reasoning-history:blk:1",
+					text: "Old answer.",
+				},
+			],
+		};
+
+		render(
+			<MemoConversationMessage
+				message={historicalMessage}
+				sessionId="session-1"
+				itemIndex={0}
+			/>,
+		);
+
+		expect(screen.getByText("Thinking")).toBeInTheDocument();
+		// Historical blocks default closed, so the body is not rendered.
+		expect(screen.queryByText("Old thinking content.")).toBeNull();
+	});
 });

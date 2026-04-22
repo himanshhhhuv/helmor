@@ -530,6 +530,7 @@ export type CliStatus = {
 	installed: boolean;
 	installPath: string | null;
 	buildMode: string;
+	installState: "missing" | "managed" | "stale";
 };
 
 export async function getCliStatus(): Promise<CliStatus> {
@@ -837,6 +838,26 @@ export type GitRefsChangedPayload = {
 	workspaceId: string;
 };
 
+export type UiMutationEvent =
+	| { type: "workspaceListChanged" }
+	| { type: "workspaceChanged"; workspaceId: string }
+	| { type: "sessionListChanged"; workspaceId: string }
+	| { type: "workspaceFilesChanged"; workspaceId: string }
+	| { type: "workspaceGitStateChanged"; workspaceId: string }
+	| { type: "workspacePrChanged"; workspaceId: string }
+	| { type: "repositoryListChanged" }
+	| { type: "repositoryChanged"; repoId: string }
+	| { type: "settingsChanged"; key: string | null }
+	| { type: "githubIdentityChanged" }
+	| {
+			type: "pendingCliSendQueued";
+			workspaceId: string;
+			sessionId: string;
+			prompt: string;
+			modelId: string | null;
+			permissionMode: string | null;
+	  };
+
 export async function listenGitBranchChanged(
 	callback: (payload: GitBranchChangedPayload) => void,
 ): Promise<UnlistenFn> {
@@ -851,6 +872,15 @@ export async function listenGitRefsChanged(
 	return listen<GitRefsChangedPayload>("git-refs-changed", (event) =>
 		callback(event.payload),
 	);
+}
+
+export async function subscribeUiMutations(
+	callback: (event: UiMutationEvent) => void,
+): Promise<void> {
+	const { Channel } = await import("@tauri-apps/api/core");
+	const onEvent = new Channel<UiMutationEvent>();
+	onEvent.onmessage = callback;
+	await invoke("subscribe_ui_mutations", { onEvent });
 }
 
 export type PrefetchRemoteRefsResponse = {
@@ -1527,14 +1557,6 @@ export async function markSessionUnread(
 	});
 }
 
-export async function markWorkspaceRead(
-	workspaceId: string,
-): Promise<MarkWorkspaceReadResponse> {
-	return invoke<MarkWorkspaceReadResponse>("mark_workspace_read", {
-		workspaceId,
-	});
-}
-
 export async function markWorkspaceUnread(
 	workspaceId: string,
 ): Promise<MarkWorkspaceReadResponse> {
@@ -1589,8 +1611,14 @@ export type ReasoningPart = {
 	type: "reasoning";
 	id: string;
 	text: string;
-	/** Per-part streaming state — only the active thinking block is streaming. */
+	/**
+	 * Live-streaming state. `true` = actively generating, `false` = just
+	 * finished in the current live session (pipeline only sets this during
+	 * streaming, never persists it), `undefined` = historical / unknown.
+	 */
 	streaming?: boolean;
+	/** Backend-measured elapsed time for a completed reasoning block. */
+	durationMs?: number;
 };
 export type ToolCallPart = {
 	type: "tool-call";

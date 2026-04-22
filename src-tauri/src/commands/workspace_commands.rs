@@ -100,13 +100,6 @@ pub async fn get_workspace(workspace_id: String) -> CmdResult<workspaces::Worksp
 }
 
 #[tauri::command]
-pub async fn mark_workspace_read(workspace_id: String) -> CmdResult<()> {
-    let ws_lock = db::workspace_mutation_lock(&workspace_id);
-    let _lock = ws_lock.lock().await;
-    Ok(workspaces::mark_workspace_read(&workspace_id)?)
-}
-
-#[tauri::command]
 pub async fn mark_workspace_unread(workspace_id: String) -> CmdResult<()> {
     let ws_lock = db::workspace_mutation_lock(&workspace_id);
     let _lock = ws_lock.lock().await;

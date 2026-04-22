@@ -250,16 +250,11 @@ pub(crate) fn mark_session_unread_in_transaction(
     transaction: &Transaction<'_>,
     session_id: &str,
 ) -> Result<()> {
-    let workspace_id: String = transaction
-        .query_row(
-            "SELECT workspace_id FROM sessions WHERE id = ?1",
-            [session_id],
-            |row| row.get(0),
-        )
-        .with_context(|| format!("Failed to resolve workspace for session {session_id}"))?;
-
     // Bump to at least 1 — idempotent for a session that's already marked
     // unread, and avoids drifting upwards on repeated background completions.
+    // `workspaces.unread` is an independent flag, not mirrored from sessions,
+    // so we don't touch it here; `has_unread` is derived as
+    // `workspaces.unread OR (any session unread_count > 0)`.
     let updated_rows = transaction
         .execute(
             "UPDATE sessions SET unread_count = MAX(COALESCE(unread_count, 0), 1) WHERE id = ?1",
@@ -271,7 +266,7 @@ pub(crate) fn mark_session_unread_in_transaction(
         bail!("Session unread update affected {updated_rows} rows for session {session_id}");
     }
 
-    sync_workspace_unread_in_transaction(transaction, &workspace_id)
+    Ok(())
 }
 
 pub(crate) fn mark_session_read_in_transaction(
@@ -297,89 +292,59 @@ pub(crate) fn mark_session_read_in_transaction(
         bail!("Session read update affected {updated_rows} rows for session {session_id}");
     }
 
-    sync_workspace_unread_in_transaction(transaction, &workspace_id)
-}
-
-pub(crate) fn mark_workspace_read_in_transaction(
-    transaction: &Transaction<'_>,
-    workspace_id: &str,
-) -> Result<()> {
-    transaction
-        .execute(
-            "UPDATE sessions SET unread_count = 0 WHERE workspace_id = ?1",
-            [workspace_id],
-        )
-        .with_context(|| format!("Failed to clear unread sessions for workspace {workspace_id}"))?;
-
-    // Workspace flag is purely derived; let the sync handle it.
-    sync_workspace_unread_in_transaction(transaction, workspace_id)
+    // Clearing a session only drops the workspace flag when nothing else in
+    // the workspace is still unread; otherwise the workspace stays marked.
+    clear_workspace_unread_if_no_session_unread_in_transaction(transaction, &workspace_id)
 }
 
 pub(crate) fn mark_workspace_unread_in_transaction(
     transaction: &Transaction<'_>,
     workspace_id: &str,
 ) -> Result<()> {
-    // Workspace.unread is purely derived from sessions, so bump a real
-    // session and let `sync_workspace_unread_in_transaction` propagate the
-    // flag. Prefer the workspace's active session; fall back to the most
-    // recently updated visible session.
-    let target_session: Option<String> = match transaction.query_row(
-        r#"
-        SELECT s.id
-        FROM sessions s
-        LEFT JOIN workspaces w ON w.id = s.workspace_id
-        WHERE s.workspace_id = ?1
-          AND COALESCE(s.is_hidden, 0) = 0
-        ORDER BY (CASE WHEN w.active_session_id = s.id THEN 1 ELSE 0 END) DESC,
-                 s.updated_at DESC
-        LIMIT 1
-        "#,
-        [workspace_id],
-        |row| row.get::<_, String>(0),
-    ) {
-        Ok(id) => Some(id),
-        Err(rusqlite::Error::QueryReturnedNoRows) => None,
-        Err(err) => {
-            return Err(err).with_context(|| {
-                format!("Failed to pick a session to mark workspace {workspace_id} unread")
-            });
-        }
-    };
+    // `workspaces.unread` is an independent flag. Setting it directly is
+    // enough — sessions are left alone. `has_unread` is derived as
+    // `workspaces.unread OR (any session unread_count > 0)`.
+    let updated_rows = transaction
+        .execute(
+            "UPDATE workspaces SET unread = 1 WHERE id = ?1",
+            [workspace_id],
+        )
+        .with_context(|| format!("Failed to mark workspace {workspace_id} as unread"))?;
 
-    let Some(session_id) = target_session else {
-        bail!("Cannot mark workspace {workspace_id} as unread: no visible sessions");
-    };
+    if updated_rows != 1 {
+        bail!("Workspace unread update affected {updated_rows} rows for workspace {workspace_id}");
+    }
 
-    mark_session_unread_in_transaction(transaction, &session_id)
+    Ok(())
 }
 
-pub(crate) fn sync_workspace_unread_in_transaction(
+/// Clears `workspaces.unread` only if every session in the workspace is
+/// already read. Called from `mark_session_read_in_transaction` so the
+/// workspace flag disappears together with the last unread session, but is
+/// preserved while any session still has unread content.
+pub(crate) fn clear_workspace_unread_if_no_session_unread_in_transaction(
     transaction: &Transaction<'_>,
     workspace_id: &str,
 ) -> Result<()> {
-    let updated_rows = transaction
+    transaction
         .execute(
             r#"
             UPDATE workspaces
-            SET unread = CASE
-              WHEN EXISTS (
+            SET unread = 0
+            WHERE id = ?1
+              AND NOT EXISTS (
                 SELECT 1
                 FROM sessions
                 WHERE workspace_id = ?1
                   AND COALESCE(unread_count, 0) > 0
-              ) THEN 1
-              ELSE 0
-            END
-            WHERE id = ?1
+              )
             "#,
             [workspace_id],
         )
-        .with_context(|| format!("Failed to sync unread state for workspace {workspace_id}"))?;
+        .with_context(|| format!("Failed to clear workspace unread for {workspace_id}"))?;
 
-    if updated_rows != 1 {
-        bail!("Unread sync affected {updated_rows} rows for workspace {workspace_id}");
-    }
-
+    // Idempotent: zero rows updated is fine — it just means the workspace
+    // still has unread sessions (or the flag was already 0).
     Ok(())
 }
 
@@ -522,6 +487,11 @@ pub fn hide_session(session_id: &str) -> Result<()> {
             [session_id],
         )
         .with_context(|| format!("Failed to hide session {session_id}"))?;
+
+    // A hidden session can no longer contribute to the workspace unread dot —
+    // the user can't reach it to clear it. Drop its unread_count so the
+    // workspace flag can fall off too when this was the last unread session.
+    mark_session_read_in_transaction(&transaction, session_id)?;
 
     // If this was the workspace's active session, switch to the next visible one
     let current_active: Option<String> = transaction

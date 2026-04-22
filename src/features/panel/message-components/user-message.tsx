@@ -125,8 +125,8 @@ export function ChatUserMessage({ message }: { message: RenderedMessage }) {
 			className="flex min-w-0 justify-end"
 		>
 			<div
-				className="max-w-[75%] overflow-hidden rounded-md bg-accent/35 px-3 py-2 leading-7 text-foreground"
-				style={{ fontSize: `${Math.max(settings.fontSize - 1, 12)}px` }}
+				className="conversation-body-text max-w-[75%] overflow-hidden rounded-md bg-accent/55 px-3 py-2 leading-7"
+				style={{ fontSize: `${settings.fontSize}px` }}
 			>
 				<p className="whitespace-pre-wrap break-words">
 					{parts.map((part, index) => {
