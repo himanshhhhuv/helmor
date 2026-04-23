@@ -125,7 +125,6 @@ const workspaceGroups: WorkspaceGroup[] = [
 				pinnedAt: null,
 				sessionCount: 0,
 				messageCount: 0,
-				attachmentCount: 0,
 			},
 			{
 				id: "ws-2",
@@ -147,7 +146,6 @@ const workspaceGroups: WorkspaceGroup[] = [
 				pinnedAt: null,
 				sessionCount: 0,
 				messageCount: 0,
-				attachmentCount: 0,
 			},
 		],
 	},
@@ -174,7 +172,6 @@ function makeArchivedSummary(id: string): WorkspaceSummary {
 		prTitle: null,
 		sessionCount: 0,
 		messageCount: 0,
-		attachmentCount: 0,
 	};
 }
 
@@ -204,14 +201,11 @@ function makeWorkspaceDetail(id: string): WorkspaceDetail {
 		branch: `feature/${id}`,
 		initializationParentBranch: "main",
 		intendedTargetBranch: "main",
-		notes: null,
 		pinnedAt: null,
 		prTitle: null,
-		prDescription: null,
 		archiveCommit: null,
 		sessionCount: 0,
 		messageCount: 0,
-		attachmentCount: 0,
 	};
 }
 

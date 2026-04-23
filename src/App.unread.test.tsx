@@ -9,7 +9,6 @@ const apiMocks = vi.hoisted(() => ({
 	loadWorkspaceDetail: vi.fn(),
 	loadWorkspaceSessions: vi.fn(),
 	loadSessionThreadMessages: vi.fn(),
-	loadSessionAttachments: vi.fn(),
 	markSessionRead: vi.fn(),
 	markSessionUnread: vi.fn(),
 }));
@@ -55,7 +54,6 @@ vi.mock("./lib/api", async (importOriginal) => {
 		loadWorkspaceSessions: apiMocks.loadWorkspaceSessions,
 		loadSessionMessages: apiMocks.loadSessionThreadMessages,
 		loadSessionThreadMessages: apiMocks.loadSessionThreadMessages,
-		loadSessionAttachments: apiMocks.loadSessionAttachments,
 		markSessionRead: apiMocks.markSessionRead,
 		markSessionUnread: apiMocks.markSessionUnread,
 	};
@@ -78,7 +76,6 @@ describe("App unread lifecycle", () => {
 		apiMocks.loadWorkspaceDetail.mockReset();
 		apiMocks.loadWorkspaceSessions.mockReset();
 		apiMocks.loadSessionThreadMessages.mockReset();
-		apiMocks.loadSessionAttachments.mockReset();
 		apiMocks.markSessionRead.mockReset();
 		apiMocks.markSessionUnread.mockReset();
 
@@ -125,14 +122,11 @@ describe("App unread lifecycle", () => {
 			branch: "main",
 			initializationParentBranch: null,
 			intendedTargetBranch: null,
-			notes: null,
 			pinnedAt: null,
 			prTitle: null,
-			prDescription: null,
 			archiveCommit: null,
 			sessionCount: 1,
 			messageCount: 0,
-			attachmentCount: 0,
 		}));
 		apiMocks.loadWorkspaceSessions.mockImplementation(async () => [
 			{
@@ -145,23 +139,16 @@ describe("App unread lifecycle", () => {
 				permissionMode: "default",
 				providerSessionId: null,
 				unreadCount: unreadRuntime.sessionUnreadCount,
-				contextTokenCount: 0,
-				contextUsedPercent: null,
-				thinkingEnabled: false,
 				codexThinkingLevel: null,
 				fastMode: false,
-				agentPersonality: null,
 				createdAt: "2026-04-03T00:00:00Z",
 				updatedAt: "2026-04-03T00:00:00Z",
 				lastUserMessageAt: null,
-				resumeSessionAt: null,
 				isHidden: false,
-				isCompacting: false,
 				active: true,
 			},
 		]);
 		apiMocks.loadSessionThreadMessages.mockResolvedValue([]);
-		apiMocks.loadSessionAttachments.mockResolvedValue([]);
 		apiMocks.markSessionRead.mockImplementation(async () => {
 			unreadRuntime.sessionUnreadCount = 0;
 			unreadRuntime.unreadSessionCount = 0;

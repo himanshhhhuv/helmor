@@ -16,7 +16,6 @@ import {
 	loadArchivedWorkspaces,
 	loadAutoCloseActionKinds,
 	loadAutoCloseOptInAsked,
-	loadSessionAttachments,
 	loadSessionThreadMessages,
 	loadWorkspaceDetail,
 	loadWorkspaceGitActionStatus,
@@ -51,8 +50,6 @@ export const helmorQueryKeys = {
 		["workspaceSessions", workspaceId] as const,
 	sessionMessages: (sessionId: string) =>
 		["sessionMessages", sessionId] as const,
-	sessionAttachments: (sessionId: string) =>
-		["sessionAttachments", sessionId] as const,
 	workspaceChanges: (workspaceRootPath: string) =>
 		["workspaceChanges", workspaceRootPath] as const,
 	workspaceFiles: (workspaceRootPath: string) =>
@@ -227,15 +224,6 @@ export function sessionThreadMessagesQueryOptions(sessionId: string) {
 		queryFn: () => loadSessionThreadMessages(sessionId),
 		gcTime: SESSION_GC_TIME,
 		staleTime: SESSION_STALE_TIME,
-	});
-}
-
-export function sessionAttachmentsQueryOptions(sessionId: string) {
-	return queryOptions({
-		queryKey: helmorQueryKeys.sessionAttachments(sessionId),
-		queryFn: () => loadSessionAttachments(sessionId),
-		gcTime: SESSION_GC_TIME,
-		staleTime: 60_000,
 	});
 }
 

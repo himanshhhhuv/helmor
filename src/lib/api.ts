@@ -73,7 +73,6 @@ export type WorkspaceRow = {
 	pinnedAt?: string | null;
 	sessionCount?: number;
 	messageCount?: number;
-	attachmentCount?: number;
 };
 
 export type WorkspaceGroup = {
@@ -147,7 +146,6 @@ export type WorkspaceSummary = {
 	prTitle?: string | null;
 	sessionCount?: number;
 	messageCount?: number;
-	attachmentCount?: number;
 };
 
 export type RepositoryCreateOption = {
@@ -264,14 +262,11 @@ export type WorkspaceDetail = {
 	branch?: string | null;
 	initializationParentBranch?: string | null;
 	intendedTargetBranch?: string | null;
-	notes?: string | null;
 	pinnedAt?: string | null;
 	prTitle?: string | null;
-	prDescription?: string | null;
 	archiveCommit?: string | null;
 	sessionCount: number;
 	messageCount: number;
-	attachmentCount: number;
 };
 
 export type WorkspaceSessionSummary = {
@@ -285,18 +280,11 @@ export type WorkspaceSessionSummary = {
 	providerSessionId?: string | null;
 	effortLevel?: string | null;
 	unreadCount: number;
-	contextTokenCount: number;
-	contextUsedPercent?: number | null;
-	thinkingEnabled: boolean;
-
 	fastMode: boolean;
-	agentPersonality?: string | null;
 	createdAt: string;
 	updatedAt: string;
 	lastUserMessageAt?: string | null;
-	resumeSessionAt?: string | null;
 	isHidden: boolean;
-	isCompacting: boolean;
 	/** Set when the session was created as a one-off dispatch from the
 	 * inspector commit button (e.g. "create-pr", "commit-and-push"). Drives
 	 * post-stream verifiers and auto-close behavior. */
@@ -361,19 +349,6 @@ export type FinalizeWorkspaceResponse = {
 };
 
 export type MarkWorkspaceReadResponse = undefined;
-
-export type SessionAttachmentRecord = {
-	id: string;
-	sessionId: string;
-	sessionMessageId?: string | null;
-	attachmentType?: string | null;
-	originalName?: string | null;
-	path?: string | null;
-	pathExists: boolean;
-	isLoading: boolean;
-	isDraft: boolean;
-	createdAt: string;
-};
 
 export type EditorFileReadResponse = {
 	path: string;
@@ -568,7 +543,6 @@ export type DevResetResult = {
 	workspacesDeleted: number;
 	sessionsDeleted: number;
 	messagesDeleted: number;
-	attachmentsDeleted: number;
 	directoriesRemoved: string[];
 };
 
@@ -923,20 +897,6 @@ export async function loadSessionThreadMessages(
 	} catch (error) {
 		throw new Error(
 			describeInvokeError(error, "Unable to load session thread messages."),
-		);
-	}
-}
-
-export async function loadSessionAttachments(
-	sessionId: string,
-): Promise<SessionAttachmentRecord[]> {
-	try {
-		return await invoke<SessionAttachmentRecord[]>("list_session_attachments", {
-			sessionId,
-		});
-	} catch (error) {
-		throw new Error(
-			describeInvokeError(error, "Unable to load session attachments."),
 		);
 	}
 }

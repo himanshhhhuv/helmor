@@ -187,7 +187,6 @@ pub fn send_message(
         let conn = crate::models::db::write_conn()?;
         let timestamp = crate::models::db::current_timestamp()?;
         let user_msg_id = Uuid::new_v4().to_string();
-        let turn_id = Uuid::new_v4().to_string();
         let user_content = serde_json::json!({
             "type": "user_prompt",
             "text": params.prompt,
@@ -195,9 +194,9 @@ pub fn send_message(
         .to_string();
         conn.execute(
             r#"INSERT INTO session_messages
-               (id, session_id, role, content, created_at, sent_at, model, turn_id, is_resumable_message)
-               VALUES (?1, ?2, 'user', ?3, ?4, ?4, ?5, ?6, 0)"#,
-            params![user_msg_id, session_id, user_content, timestamp, model.id, turn_id],
+               (id, session_id, role, content, created_at, sent_at)
+               VALUES (?1, ?2, 'user', ?3, ?4, ?4)"#,
+            params![user_msg_id, session_id, user_content, timestamp],
         )?;
 
         insert_pending_cli_send(
@@ -283,7 +282,6 @@ pub fn send_message(
     // 6. Persist user message + set session streaming
     let conn = crate::models::db::write_conn()?;
     let timestamp = crate::models::db::current_timestamp()?;
-    let turn_id = Uuid::new_v4().to_string();
     let user_msg_id = Uuid::new_v4().to_string();
 
     let user_content = serde_json::json!({
@@ -298,9 +296,9 @@ pub fn send_message(
     )?;
     conn.execute(
         r#"INSERT INTO session_messages
-           (id, session_id, role, content, created_at, sent_at, model, turn_id, is_resumable_message)
-           VALUES (?1, ?2, 'user', ?3, ?4, ?4, ?5, ?6, 0)"#,
-        params![user_msg_id, session_id, user_content, timestamp, model.id, turn_id],
+           (id, session_id, role, content, created_at, sent_at)
+           VALUES (?1, ?2, 'user', ?3, ?4, ?4)"#,
+        params![user_msg_id, session_id, user_content, timestamp],
     )?;
 
     // 7. Event loop
@@ -348,10 +346,9 @@ pub fn send_message(
                 }
 
                 // Persist remaining turns
-                let model_str = pipeline.accumulator.resolved_model().to_string();
                 while persisted_turn_count < pipeline.accumulator.turns_len() {
                     let turn = pipeline.accumulator.turn_at(persisted_turn_count);
-                    if let Err(e) = persist_turn(&conn, &session_id, turn, &model_str, &turn_id) {
+                    if let Err(e) = persist_turn(&conn, &session_id, turn) {
                         tracing::error!("Failed to persist turn: {e}");
                         break;
                     }
@@ -452,11 +449,9 @@ pub fn send_message(
                 if !line.is_empty() && line != "{}" {
                     let emit = pipeline.push_event(&event.raw, &line);
 
-                    let model_str = pipeline.accumulator.resolved_model().to_string();
                     while persisted_turn_count < pipeline.accumulator.turns_len() {
                         let turn = pipeline.accumulator.turn_at(persisted_turn_count);
-                        if let Err(e) = persist_turn(&conn, &session_id, turn, &model_str, &turn_id)
-                        {
+                        if let Err(e) = persist_turn(&conn, &session_id, turn) {
                             tracing::error!("Failed to persist turn: {e}");
                             break;
                         }
@@ -493,16 +488,14 @@ fn persist_turn(
     conn: &rusqlite::Connection,
     session_id: &str,
     turn: &crate::pipeline::types::CollectedTurn,
-    model: &str,
-    turn_id: &str,
 ) -> Result<()> {
     let now = crate::models::db::current_timestamp()?;
     let msg_id = turn.id.clone();
     conn.execute(
         r#"INSERT INTO session_messages
-           (id, session_id, role, content, created_at, sent_at, model, turn_id, is_resumable_message)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6, ?7, 0)"#,
-        params![msg_id, session_id, turn.role, turn.content_json, now, model, turn_id],
+           (id, session_id, role, content, created_at, sent_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?5)"#,
+        params![msg_id, session_id, turn.role, turn.content_json, now],
     )?;
     Ok(())
 }

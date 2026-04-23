@@ -232,14 +232,11 @@ function createWorkspaceDetail(workspaceId: WorkspaceFixtureId) {
 		branch: archived ? "archive/main" : "main",
 		initializationParentBranch: "main",
 		intendedTargetBranch: "main",
-		notes: null,
 		pinnedAt: null,
 		prTitle: null,
-		prDescription: null,
 		archiveCommit: null,
 		sessionCount: sessions.length,
 		messageCount: 0,
-		attachmentCount: 0,
 	};
 }
 
@@ -254,18 +251,12 @@ function createWorkspaceSessions(workspaceId: WorkspaceFixtureId) {
 		permissionMode: "default",
 		providerSessionId: null,
 		unreadCount: session.unreadCount ?? 0,
-		contextTokenCount: 0,
-		contextUsedPercent: null,
-		thinkingEnabled: true,
 		codexThinkingLevel: null,
 		fastMode: false,
-		agentPersonality: null,
 		createdAt: "2026-04-05T00:00:00Z",
 		updatedAt: session.updatedAt ?? "2026-04-05T00:00:00Z",
 		lastUserMessageAt: null,
-		resumeSessionAt: null,
 		isHidden: false,
-		isCompacting: false,
 		actionKind: session.actionKind ?? null,
 		active: session.active,
 	}));
@@ -423,7 +414,6 @@ describe("App global navigation shortcuts", () => {
 				prTitle: null,
 				sessionCount: 1,
 				messageCount: 0,
-				attachmentCount: 0,
 			},
 			{
 				id: WORKSPACE_IDS.archived2,
@@ -446,7 +436,6 @@ describe("App global navigation shortcuts", () => {
 				prTitle: null,
 				sessionCount: 1,
 				messageCount: 0,
-				attachmentCount: 0,
 			},
 		]);
 		apiMocks.loadAgentModelSections.mockResolvedValue([]);

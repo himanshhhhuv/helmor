@@ -57,7 +57,6 @@ pub struct WorkspaceSidebarRow {
     pub pinned_at: Option<String>,
     pub session_count: i64,
     pub message_count: i64,
-    pub attachment_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -92,7 +91,6 @@ pub struct WorkspaceSummary {
     pub pr_title: Option<String>,
     pub session_count: i64,
     pub message_count: i64,
-    pub attachment_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -122,14 +120,11 @@ pub struct WorkspaceDetail {
     pub branch: Option<String>,
     pub initialization_parent_branch: Option<String>,
     pub intended_target_branch: Option<String>,
-    pub notes: Option<String>,
     pub pinned_at: Option<String>,
     pub pr_title: Option<String>,
-    pub pr_description: Option<String>,
     pub archive_commit: Option<String>,
     pub session_count: i64,
     pub message_count: i64,
-    pub attachment_count: i64,
 }
 
 // Workspace persistence lives in `crate::models::workspaces`.
@@ -623,7 +618,6 @@ pub fn record_to_sidebar_row(record: WorkspaceRecord) -> WorkspaceSidebarRow {
         pinned_at: record.pinned_at,
         session_count: record.session_count,
         message_count: record.message_count,
-        attachment_count: record.attachment_count,
     }
 }
 
@@ -651,7 +645,6 @@ pub fn record_to_summary(record: WorkspaceRecord) -> WorkspaceSummary {
         pr_title: record.pr_title,
         session_count: record.session_count,
         message_count: record.message_count,
-        attachment_count: record.attachment_count,
     }
 }
 
@@ -697,14 +690,11 @@ pub fn record_to_detail(record: WorkspaceRecord) -> WorkspaceDetail {
         branch: record.branch,
         initialization_parent_branch: record.initialization_parent_branch,
         intended_target_branch: record.intended_target_branch,
-        notes: record.notes,
         pinned_at: record.pinned_at,
         pr_title: record.pr_title,
-        pr_description: record.pr_description,
         archive_commit: record.archive_commit,
         session_count: record.session_count,
         message_count: record.message_count,
-        attachment_count: record.attachment_count,
     }
 }
 
@@ -765,9 +755,9 @@ pub fn purge_orphaned_workspaces() -> Result<usize> {
     Ok(count)
 }
 
-/// Permanently delete a workspace and all its data (sessions, messages,
-/// attachments, diff_comments) from the database, plus any filesystem
-/// artifacts (worktree directory, archived context).
+/// Permanently delete a workspace and all its data (sessions, messages)
+/// from the database, plus any filesystem artifacts (worktree directory,
+/// archived context).
 pub fn permanently_delete_workspace(workspace_id: &str) -> Result<()> {
     let mut connection = db::write_conn()?;
 
@@ -785,18 +775,6 @@ pub fn permanently_delete_workspace(workspace_id: &str) -> Result<()> {
         .transaction()
         .context("Failed to start delete workspace transaction")?;
 
-    transaction
-        .execute(
-            "DELETE FROM diff_comments WHERE workspace_id = ?1",
-            [workspace_id],
-        )
-        .context("Failed to delete workspace diff comments")?;
-    transaction
-        .execute(
-            "DELETE FROM attachments WHERE session_id IN (SELECT id FROM sessions WHERE workspace_id = ?1)",
-            [workspace_id],
-        )
-        .context("Failed to delete workspace attachments")?;
     transaction
         .execute(
             "DELETE FROM session_messages WHERE session_id IN (SELECT id FROM sessions WHERE workspace_id = ?1)",

@@ -454,7 +454,7 @@ pub enum SessionAction {
         session: String,
         title: String,
     },
-    /// Delete a session and all its messages / attachments.
+    /// Delete a session and all its messages.
     Delete {
         #[arg(long)]
         workspace: String,
@@ -491,12 +491,6 @@ pub enum SessionAction {
         effort: Option<String>,
         #[arg(long)]
         permission_mode: Option<String>,
-    },
-    /// List attachments associated with a session.
-    Attachments {
-        #[arg(long)]
-        workspace: String,
-        session: String,
     },
 }
 

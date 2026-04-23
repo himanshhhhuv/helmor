@@ -5,7 +5,7 @@ fn workspace_record_marks_unread_when_session_has_unread_even_if_workspace_flag_
     let _guard = TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let harness = ArchiveTestHarness::new(true);
+    let harness = ArchiveTestHarness::new();
     let connection = Connection::open(crate::data_dir::db_path().unwrap()).unwrap();
 
     connection
@@ -35,7 +35,7 @@ fn archived_workspace_summary_reports_unread_state() {
     let _guard = TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let harness = RestoreTestHarness::new(true);
+    let harness = RestoreTestHarness::new();
     let connection = Connection::open(crate::data_dir::db_path().unwrap()).unwrap();
 
     connection
@@ -65,7 +65,7 @@ fn mark_session_read_clears_session_and_workspace_unread() {
     let _guard = TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let harness = ArchiveTestHarness::new(true);
+    let harness = ArchiveTestHarness::new();
     let connection = Connection::open(crate::data_dir::db_path().unwrap()).unwrap();
 
     connection
@@ -100,7 +100,7 @@ fn mark_session_unread_bumps_only_the_session() {
     let _guard = TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let harness = ArchiveTestHarness::new(true);
+    let harness = ArchiveTestHarness::new();
     let connection = Connection::open(crate::data_dir::db_path().unwrap()).unwrap();
 
     connection
@@ -149,7 +149,7 @@ fn mark_workspace_unread_sets_workspace_flag_directly() {
     let _guard = TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let harness = ArchiveTestHarness::new(true);
+    let harness = ArchiveTestHarness::new();
     let connection = Connection::open(crate::data_dir::db_path().unwrap()).unwrap();
 
     connection
@@ -185,7 +185,7 @@ fn mark_workspace_read_clears_workspace_flag_and_all_session_unread() {
     let _guard = TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let harness = ArchiveTestHarness::new(true);
+    let harness = ArchiveTestHarness::new();
     let connection = Connection::open(crate::data_dir::db_path().unwrap()).unwrap();
 
     connection
@@ -199,11 +199,8 @@ fn mark_workspace_read_clears_workspace_flag_and_all_session_unread() {
             r#"
             INSERT INTO sessions (
               id, workspace_id, title, agent_type, status, model, permission_mode,
-              provider_session_id, unread_count, context_token_count, context_used_percent,
-              thinking_enabled, fast_mode, agent_personality,
-              created_at, updated_at, last_user_message_at, resume_session_at,
-              is_hidden, is_compacting
-            ) VALUES ('session-read-all-2', ?1, 'Second session', 'claude', 'idle', 'opus', 'default', NULL, 1, 0, NULL, 0, 0, 'none', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL, 0, 0)
+              unread_count, fast_mode
+            ) VALUES ('session-read-all-2', ?1, 'Second session', 'claude', 'idle', 'opus', 'default', 1, 0)
             "#,
             [&harness.workspace_id],
         )
@@ -238,7 +235,7 @@ fn mark_session_read_preserves_workspace_unread_while_other_sessions_stay_unread
     let _guard = TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let harness = ArchiveTestHarness::new(true);
+    let harness = ArchiveTestHarness::new();
     let connection = Connection::open(crate::data_dir::db_path().unwrap()).unwrap();
 
     // Two sessions, both unread; workspace flag also set independently.
@@ -253,11 +250,8 @@ fn mark_session_read_preserves_workspace_unread_while_other_sessions_stay_unread
             r#"
             INSERT INTO sessions (
               id, workspace_id, title, agent_type, status, model, permission_mode,
-              provider_session_id, unread_count, context_token_count, context_used_percent,
-              thinking_enabled, fast_mode, agent_personality,
-              created_at, updated_at, last_user_message_at, resume_session_at,
-              is_hidden, is_compacting
-            ) VALUES ('session-archive-2', ?1, 'Second session', 'claude', 'idle', 'opus', 'default', NULL, 2, 0, NULL, 0, 0, 'none', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL, 0, 0)
+              unread_count, fast_mode
+            ) VALUES ('session-archive-2', ?1, 'Second session', 'claude', 'idle', 'opus', 'default', 2, 0)
             "#,
             [&harness.workspace_id],
         )
@@ -294,7 +288,7 @@ fn hide_session_clears_its_unread_and_drops_workspace_flag() {
     let _guard = TEST_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let harness = ArchiveTestHarness::new(true);
+    let harness = ArchiveTestHarness::new();
     let connection = Connection::open(crate::data_dir::db_path().unwrap()).unwrap();
 
     // Only session in the workspace has unread; workspace flag is derived on.

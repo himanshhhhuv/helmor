@@ -24,7 +24,6 @@ const apiMocks = vi.hoisted(() => ({
 	loadWorkspaceDetail: vi.fn(),
 	loadWorkspaceSessions: vi.fn(),
 	loadSessionThreadMessages: vi.fn(),
-	loadSessionAttachments: vi.fn(),
 	loadRepoScripts: vi.fn(),
 	listRepositories: vi.fn(),
 	prepareWorkspaceFromRepo: vi.fn(),
@@ -56,7 +55,6 @@ vi.mock("./lib/api", async (importOriginal) => {
 		loadWorkspaceSessions: apiMocks.loadWorkspaceSessions,
 		loadSessionMessages: apiMocks.loadSessionThreadMessages,
 		loadSessionThreadMessages: apiMocks.loadSessionThreadMessages,
-		loadSessionAttachments: apiMocks.loadSessionAttachments,
 		loadRepoScripts: apiMocks.loadRepoScripts,
 		listRepositories: apiMocks.listRepositories,
 		prepareWorkspaceFromRepo: apiMocks.prepareWorkspaceFromRepo,
@@ -91,7 +89,6 @@ describe("App unread — re-click selected workspace clears dot", () => {
 		apiMocks.loadArchivedWorkspaces.mockResolvedValue([]);
 		apiMocks.loadAgentModelSections.mockResolvedValue([]);
 		apiMocks.loadSessionThreadMessages.mockResolvedValue([]);
-		apiMocks.loadSessionAttachments.mockResolvedValue([]);
 		apiMocks.loadRepoScripts.mockResolvedValue({
 			setupScript: null,
 			runScript: null,
@@ -134,7 +131,6 @@ describe("App unread — re-click selected workspace clears dot", () => {
 							manualStatus: null,
 							sessionCount: 1,
 							messageCount: 0,
-							attachmentCount: 0,
 						},
 					],
 				},
@@ -164,14 +160,11 @@ describe("App unread — re-click selected workspace clears dot", () => {
 					branch: "testuser/acamar",
 					initializationParentBranch: "main",
 					intendedTargetBranch: "main",
-					notes: null,
 					pinnedAt: null,
 					prTitle: null,
-					prDescription: null,
 					archiveCommit: null,
 					sessionCount: 1,
 					messageCount: 0,
-					attachmentCount: 0,
 				};
 			},
 		);
@@ -195,18 +188,12 @@ describe("App unread — re-click selected workspace clears dot", () => {
 						permissionMode: "default",
 						providerSessionId: null,
 						unreadCount: runtime.sessionUnreadCount,
-						contextTokenCount: 0,
-						contextUsedPercent: null,
-						thinkingEnabled: true,
 						codexThinkingLevel: null,
 						fastMode: false,
-						agentPersonality: null,
 						createdAt: "2026-04-03T00:00:00Z",
 						updatedAt: "2026-04-03T00:00:00Z",
 						lastUserMessageAt: null,
-						resumeSessionAt: null,
 						isHidden: false,
-						isCompacting: false,
 						active: true,
 					},
 				];

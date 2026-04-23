@@ -597,10 +597,8 @@ pub(super) fn stream_via_sidecar(
         if let Some(hsid) = &hsid_copy {
             let ctx = ExchangeContext {
                 helmor_session_id: hsid.clone(),
-                turn_id: Uuid::new_v4().to_string(),
                 model_id: model_copy.id.to_string(),
                 model_provider: model_copy.provider.to_string(),
-                assistant_sdk_message_id: format!("helmor-assistant-{}", Uuid::new_v4()),
                 user_message_id: user_message_id_copy
                     .clone()
                     .unwrap_or_else(|| Uuid::new_v4().to_string()),
@@ -1722,10 +1720,8 @@ working_directory: /tmp/helmor
         fn ctx() -> ExchangeContext {
             ExchangeContext {
                 helmor_session_id: "s-1".to_string(),
-                turn_id: "turn-1".to_string(),
                 model_id: "opus".to_string(),
                 model_provider: "claude".to_string(),
-                assistant_sdk_message_id: "sdk-1".to_string(),
                 user_message_id: "user-1".to_string(),
             }
         }

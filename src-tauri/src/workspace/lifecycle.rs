@@ -254,13 +254,6 @@ pub fn finalize_workspace_from_repo_impl(workspace_id: &str) -> Result<FinalizeW
         };
 
         helpers::create_workspace_context_scaffold(&workspace_dir)?;
-        let initialization_files_copied = git_ops::tracked_file_count(&workspace_dir)?;
-
-        workspace_models::update_workspace_initialization_metadata(
-            workspace_id,
-            initialization_files_copied,
-            &timestamp,
-        )?;
         // Defer setup to the frontend inspector: if a script is configured,
         // the workspace starts in "setup_pending" and the UI auto-triggers it.
         let has_setup = match resolve_setup_hook(&repository, &workspace_dir) {
@@ -869,12 +862,9 @@ pub fn restore_workspace_impl(
         return Err(error);
     }
 
-    if let Err(error) = workspace_models::update_restored_workspace_state(
-        workspace_id,
-        &archived_context_dir,
-        &workspace_context_dir,
-        target_branch_override,
-    ) {
+    if let Err(error) =
+        workspace_models::update_restored_workspace_state(workspace_id, target_branch_override)
+    {
         cleanup_failed_restore(
             &repo_root,
             &workspace_dir,

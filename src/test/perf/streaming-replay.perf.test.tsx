@@ -102,7 +102,6 @@ function makeWorkspace(id: string): WorkspaceDetail {
 		derivedStatus: "in-progress",
 		sessionCount: 1,
 		messageCount: 0,
-		attachmentCount: 0,
 	};
 }
 
@@ -119,13 +118,10 @@ function makeSession(
 		status: "idle",
 		permissionMode: "ask",
 		unreadCount: 0,
-		contextTokenCount: 0,
-		thinkingEnabled: false,
 		fastMode: false,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		isHidden: false,
-		isCompacting: false,
 		active: false,
 	};
 }

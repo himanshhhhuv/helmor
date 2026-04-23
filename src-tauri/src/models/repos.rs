@@ -270,11 +270,9 @@ pub(crate) fn insert_repository(repository: &ResolvedRepositoryInput) -> Result<
               setup_script,
               run_script,
               archive_script,
-              conductor_config,
-              icon,
               created_at,
               updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, NULL, NULL, NULL, NULL, NULL, datetime('now'), datetime('now'))
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, NULL, NULL, NULL, datetime('now'), datetime('now'))
             "#,
             (
                 repo_id.as_str(),
@@ -644,10 +642,6 @@ pub fn delete_repository_cascade(repo_id: &str) -> Result<()> {
 
     // Delete leaf data first, then parent rows.
     tx.execute(
-        "DELETE FROM attachments WHERE session_id IN (SELECT s.id FROM sessions s JOIN workspaces w ON s.workspace_id = w.id WHERE w.repository_id = ?1)",
-        [repo_id],
-    ).context("Failed to delete attachments for repository")?;
-    tx.execute(
         "DELETE FROM session_messages WHERE session_id IN (SELECT s.id FROM sessions s JOIN workspaces w ON s.workspace_id = w.id WHERE w.repository_id = ?1)",
         [repo_id],
     ).context("Failed to delete session messages for repository")?;
@@ -655,10 +649,6 @@ pub fn delete_repository_cascade(repo_id: &str) -> Result<()> {
         "DELETE FROM sessions WHERE workspace_id IN (SELECT id FROM workspaces WHERE repository_id = ?1)",
         [repo_id],
     ).context("Failed to delete sessions for repository")?;
-    tx.execute(
-        "DELETE FROM diff_comments WHERE workspace_id IN (SELECT id FROM workspaces WHERE repository_id = ?1)",
-        [repo_id],
-    ).context("Failed to delete diff comments for repository")?;
     tx.execute(
         "DELETE FROM pending_cli_sends WHERE workspace_id IN (SELECT id FROM workspaces WHERE repository_id = ?1)",
         [repo_id],

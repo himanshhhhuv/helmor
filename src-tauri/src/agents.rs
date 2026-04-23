@@ -179,10 +179,8 @@ use crate::pipeline::types::{AgentUsage, CollectedTurn, MessageRole};
 /// Context shared across incremental persistence calls within a single exchange.
 struct ExchangeContext {
     helmor_session_id: String,
-    turn_id: String,
     model_id: String,
     model_provider: String,
-    assistant_sdk_message_id: String,
     user_message_id: String,
 }
 
@@ -760,10 +758,8 @@ mod tests {
 
         let ctx = ExchangeContext {
             helmor_session_id: "s1".to_string(),
-            turn_id: Uuid::new_v4().to_string(),
             model_id: "opus-1m".to_string(),
             model_provider: "claude".to_string(),
-            assistant_sdk_message_id: format!("helmor-assistant-{}", Uuid::new_v4()),
             user_message_id: Uuid::new_v4().to_string(),
         };
 
@@ -913,10 +909,8 @@ mod tests {
 
         let ctx = ExchangeContext {
             helmor_session_id: "s1".to_string(),
-            turn_id: Uuid::new_v4().to_string(),
             model_id: "opus-1m".to_string(),
             model_provider: "claude".to_string(),
-            assistant_sdk_message_id: format!("helmor-assistant-{}", Uuid::new_v4()),
             user_message_id: Uuid::new_v4().to_string(),
         };
 
@@ -973,10 +967,8 @@ mod tests {
 
         let ctx = ExchangeContext {
             helmor_session_id: "s1".to_string(),
-            turn_id: Uuid::new_v4().to_string(),
             model_id: "opus-1m".to_string(),
             model_provider: "claude".to_string(),
-            assistant_sdk_message_id: format!("helmor-assistant-{}", Uuid::new_v4()),
             user_message_id: Uuid::new_v4().to_string(),
         };
 
@@ -1002,11 +994,11 @@ mod tests {
         let _ = persist_turn_message(&conn, &ctx, &turn1, "opus").unwrap();
         let _ = persist_turn_message(&conn, &ctx, &turn2, "opus").unwrap();
 
-        // Verify: 3 messages so far (user + 2 turns), all with same turn_id
+        // Verify: 3 messages so far (user + 2 turns)
         let msg_count: i64 = conn
             .query_row(
-                "SELECT count(*) FROM session_messages WHERE session_id = 's1' AND turn_id = ?1",
-                [&ctx.turn_id],
+                "SELECT count(*) FROM session_messages WHERE session_id = 's1'",
+                [],
                 |r| r.get(0),
             )
             .unwrap();
@@ -1046,10 +1038,8 @@ mod tests {
 
         let ctx = ExchangeContext {
             helmor_session_id: "s1".to_string(),
-            turn_id: "turn-1".to_string(),
             model_id: "opus-1m".to_string(),
             model_provider: "claude".to_string(),
-            assistant_sdk_message_id: "assistant-1".to_string(),
             user_message_id: "user-initial".to_string(),
         };
 

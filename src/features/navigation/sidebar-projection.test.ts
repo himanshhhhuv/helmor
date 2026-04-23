@@ -50,7 +50,6 @@ function makeArchivedSummary(id: string): WorkspaceSummary {
 		prTitle: null,
 		sessionCount: 0,
 		messageCount: 0,
-		attachmentCount: 0,
 	};
 }
 

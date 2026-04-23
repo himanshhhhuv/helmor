@@ -632,14 +632,6 @@ pub fn staged_archive_context_dir(archived_context_dir: &Path) -> PathBuf {
     ))
 }
 
-pub fn attachment_prefix(path: &Path) -> String {
-    let mut prefix = path.display().to_string();
-    if !prefix.ends_with('/') {
-        prefix.push('/');
-    }
-    prefix
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

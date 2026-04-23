@@ -1,4 +1,4 @@
-//! `helmor session` — session CRUD, thread messages, attachments.
+//! `helmor session` — session CRUD and thread messages.
 
 use anyhow::Result;
 use rusqlite::params;
@@ -52,7 +52,6 @@ pub fn dispatch(action: &SessionAction, cli: &Cli) -> Result<()> {
             permission_mode.as_deref(),
             cli,
         ),
-        SessionAction::Attachments { workspace, session } => attachments(workspace, session, cli),
     }
 }
 
@@ -249,29 +248,4 @@ fn update_settings(
     notify_ui_event(UiMutationEvent::SessionListChanged { workspace_id });
     output::print_ok(cli, "Session settings updated");
     Ok(())
-}
-
-fn attachments(workspace_ref: &str, session: &str, cli: &Cli) -> Result<()> {
-    let workspace_id = service::resolve_workspace_ref(workspace_ref)?;
-    let session_id = refs::resolve_session_ref(&workspace_id, session)?;
-    let attachments = sessions::list_session_attachments(&session_id)?;
-    output::print(cli, &attachments, |items| {
-        if items.is_empty() {
-            "No attachments.".to_string()
-        } else {
-            items
-                .iter()
-                .map(|a| {
-                    format!(
-                        "{}\t{}\t{}\t{}",
-                        a.id,
-                        a.attachment_type.as_deref().unwrap_or("-"),
-                        a.original_name.as_deref().unwrap_or("-"),
-                        a.path.as_deref().unwrap_or("-"),
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        }
-    })
 }

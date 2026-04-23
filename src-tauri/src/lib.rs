@@ -192,7 +192,6 @@ pub fn run() {
             commands::script_commands::stop_repo_script,
             commands::script_commands::write_repo_script_stdin,
             commands::script_commands::resize_repo_script,
-            commands::session_commands::list_session_attachments,
             commands::session_commands::list_session_thread_messages,
             commands::workspace_commands::list_workspace_groups,
             commands::session_commands::list_workspace_sessions,

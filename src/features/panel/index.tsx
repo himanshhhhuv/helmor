@@ -2,7 +2,6 @@ import { memo, type ReactNode, useEffect } from "react";
 import type {
 	AgentProvider,
 	PullRequestInfo,
-	SessionAttachmentRecord,
 	WorkspaceDetail,
 	WorkspaceSessionSummary,
 } from "@/lib/api";
@@ -29,7 +28,6 @@ type WorkspacePanelProps = {
 	selectedSessionId: string | null;
 	sessionDisplayProviders?: Record<string, AgentProvider>;
 	sessionPanes: PresentedSessionPane[];
-	attachments?: SessionAttachmentRecord[];
 	loadingWorkspace?: boolean;
 	loadingSession?: boolean;
 	refreshingWorkspace?: boolean;
@@ -55,7 +53,6 @@ export const WorkspacePanel = memo(function WorkspacePanel({
 	selectedSessionId,
 	sessionDisplayProviders,
 	sessionPanes,
-	attachments: _attachments,
 	loadingWorkspace = false,
 	loadingSession = false,
 	refreshingWorkspace: _refreshingWorkspace = false,

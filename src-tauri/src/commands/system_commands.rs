@@ -316,7 +316,6 @@ pub struct DevResetResult {
     pub workspaces_deleted: usize,
     pub sessions_deleted: usize,
     pub messages_deleted: usize,
-    pub attachments_deleted: usize,
     pub directories_removed: Vec<String>,
 }
 
@@ -362,10 +361,8 @@ pub async fn dev_reset_all_data(app: tauri::AppHandle) -> CmdResult<DevResetResu
             .transaction()
             .context("Failed to start dev-reset transaction")?;
 
-        let attachments_deleted: usize = tx.execute("DELETE FROM attachments", []).unwrap_or(0);
         let messages_deleted: usize = tx.execute("DELETE FROM session_messages", []).unwrap_or(0);
         let sessions_deleted: usize = tx.execute("DELETE FROM sessions", []).unwrap_or(0);
-        let _diff_comments: usize = tx.execute("DELETE FROM diff_comments", []).unwrap_or(0);
         let _pending: usize = tx.execute("DELETE FROM pending_cli_sends", []).unwrap_or(0);
         let workspaces_deleted: usize = tx.execute("DELETE FROM workspaces", []).unwrap_or(0);
         let repos_deleted: usize = tx.execute("DELETE FROM repos", []).unwrap_or(0);
@@ -413,7 +410,6 @@ pub async fn dev_reset_all_data(app: tauri::AppHandle) -> CmdResult<DevResetResu
             workspaces_deleted,
             sessions_deleted,
             messages_deleted,
-            attachments_deleted,
             directories_removed: dirs_removed,
         })
     })

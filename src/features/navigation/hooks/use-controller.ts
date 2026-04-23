@@ -1497,7 +1497,6 @@ function createPreparedWorkspaceRow(
 		pinnedAt: null,
 		sessionCount: 1,
 		messageCount: 0,
-		attachmentCount: 0,
 	};
 }
 
@@ -1517,17 +1516,11 @@ function createOptimisticWorkspaceSession(
 		providerSessionId: null,
 		effortLevel: null,
 		unreadCount: 0,
-		contextTokenCount: 0,
-		contextUsedPercent: null,
-		thinkingEnabled: true,
 		fastMode: false,
-		agentPersonality: null,
 		createdAt,
 		updatedAt: createdAt,
 		lastUserMessageAt: null,
-		resumeSessionAt: null,
 		isHidden: false,
-		isCompacting: false,
 		actionKind: null,
 		active: true,
 	};

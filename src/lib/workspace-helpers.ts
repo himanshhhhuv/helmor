@@ -43,14 +43,11 @@ export function createOptimisticCreatingWorkspaceDetail(
 		branch: row.branch ?? null,
 		initializationParentBranch: null,
 		intendedTargetBranch: null,
-		notes: null,
 		pinnedAt: row.pinnedAt ?? null,
 		prTitle: null,
-		prDescription: null,
 		archiveCommit: null,
 		sessionCount: initialSessionId ? 1 : 0,
 		messageCount: 0,
-		attachmentCount: 0,
 	};
 }
 
@@ -317,7 +314,6 @@ export function summaryToArchivedRow(summary: WorkspaceSummary): WorkspaceRow {
 		prTitle: summary.prTitle ?? null,
 		sessionCount: summary.sessionCount,
 		messageCount: summary.messageCount,
-		attachmentCount: summary.attachmentCount,
 	};
 }
 
@@ -412,7 +408,6 @@ export function rowToWorkspaceSummary(
 		prTitle: row.prTitle ?? null,
 		sessionCount: row.sessionCount,
 		messageCount: row.messageCount,
-		attachmentCount: row.attachmentCount,
 		...overrides,
 	};
 }

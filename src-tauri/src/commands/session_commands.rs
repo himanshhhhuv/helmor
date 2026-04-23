@@ -23,13 +23,6 @@ pub async fn list_session_thread_messages(
 }
 
 #[tauri::command]
-pub async fn list_session_attachments(
-    session_id: String,
-) -> CmdResult<Vec<sessions::SessionAttachmentRecord>> {
-    run_blocking(move || sessions::list_session_attachments(&session_id)).await
-}
-
-#[tauri::command]
 pub async fn create_session(
     workspace_id: String,
     action_kind: Option<ActionKind>,
