@@ -44,7 +44,6 @@ const PROGRESSIVE_VIEWPORT_DEFAULT_HEIGHT = 900;
 const PROGRESSIVE_VIEWPORT_HEADER_HEIGHT = 24;
 const PROGRESSIVE_VIEWPORT_STREAMING_FOOTER_HEIGHT = 40;
 const CONVERSATION_BOTTOM_SPACER_HEIGHT = 40;
-const STICK_TO_BOTTOM_ESCAPE_OFFSET_PX = 54;
 
 export function resolveConversationRowHeight({
 	estimatedHeight,
@@ -545,15 +544,6 @@ function ProgressiveConversationViewport({
 			hasUserScrolledRef.current = true;
 			stopScroll();
 		};
-		const markScrolledAwayFromBottom = () => {
-			const distanceFromBottom =
-				scrollParent.scrollHeight -
-				scrollParent.clientHeight -
-				scrollParent.scrollTop;
-			if (distanceFromBottom > STICK_TO_BOTTOM_ESCAPE_OFFSET_PX) {
-				escapeBottomLock();
-			}
-		};
 		const inScrollParent = (target: EventTarget | null) => {
 			return (
 				target instanceof Node &&
@@ -591,9 +581,6 @@ function ProgressiveConversationViewport({
 			onTouchMove as unknown as EventListener,
 			{ passive: true },
 		);
-		scrollParent.addEventListener("scroll", markScrolledAwayFromBottom, {
-			passive: true,
-		});
 		return () => {
 			window.removeEventListener("wheel", onWheel as EventListener);
 			window.removeEventListener(
@@ -604,7 +591,6 @@ function ProgressiveConversationViewport({
 				"touchmove",
 				onTouchMove as unknown as EventListener,
 			);
-			scrollParent.removeEventListener("scroll", markScrolledAwayFromBottom);
 		};
 	}, [scrollParent, stopScroll]);
 
