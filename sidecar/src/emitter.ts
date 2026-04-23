@@ -142,6 +142,26 @@ export type ModelsListedEvent = {
 	}>;
 };
 
+// Context-window snapshot from the agent SDK. Claude auto-pulls at
+// turn-end; Codex forwards `thread/tokenUsage/updated`. Both ride on
+// the streaming requestId. `meta` is the raw SDK JSON, stringified.
+export type ContextUsageUpdatedEvent = {
+	readonly id: string;
+	readonly type: "contextUsageUpdated";
+	readonly sessionId: string;
+	readonly meta: string | null;
+};
+
+// Account-global Codex rate-limit snapshot (5h / 7d windows). Forwarded
+// from Codex's `account/rateLimits/updated` notification. Rides on the
+// streaming requestId but the value is account-scoped — Rust persists it
+// in `settings`, not on a session row.
+export type CodexRateLimitsUpdatedEvent = {
+	readonly id: string;
+	readonly type: "codexRateLimitsUpdated";
+	readonly snapshot: string;
+};
+
 export type SidecarControlEvent =
 	| ReadyEvent
 	| EndEvent
@@ -159,7 +179,9 @@ export type SidecarControlEvent =
 	| PermissionModeChangedEvent
 	| PlanCapturedEvent
 	| ModelsListedEvent
-	| UserInputRequestEvent;
+	| UserInputRequestEvent
+	| ContextUsageUpdatedEvent
+	| CodexRateLimitsUpdatedEvent;
 
 /**
  * Typed emitter for the sidecar's stdout protocol.
@@ -231,6 +253,12 @@ export interface SidecarEmitter {
 			effortLevels?: readonly string[];
 		}>,
 	): void;
+	contextUsageUpdated(
+		requestId: string,
+		sessionId: string,
+		meta: string | null,
+	): void;
+	codexRateLimitsUpdated(requestId: string, snapshot: string): void;
 	/**
 	 * Forward a raw provider SDK message. `id` is appended LAST so an SDK
 	 * field named `id` can never override our request id.
@@ -335,6 +363,19 @@ export function createSidecarEmitter(
 			}),
 		modelsListed: (requestId, provider, models) =>
 			write({ id: requestId, type: "modelsListed", provider, models }),
+		contextUsageUpdated: (requestId, sessionId, meta) =>
+			write({
+				id: requestId,
+				type: "contextUsageUpdated",
+				sessionId,
+				meta,
+			}),
+		codexRateLimitsUpdated: (requestId, snapshot) =>
+			write({
+				id: requestId,
+				type: "codexRateLimitsUpdated",
+				snapshot,
+			}),
 		passthrough: (requestId, message) =>
 			write({ ...(message as Record<string, unknown>), id: requestId }),
 	};

@@ -816,6 +816,8 @@ export type UiMutationEvent =
 	| { type: "workspaceListChanged" }
 	| { type: "workspaceChanged"; workspaceId: string }
 	| { type: "sessionListChanged"; workspaceId: string }
+	| { type: "contextUsageChanged"; sessionId: string }
+	| { type: "codexRateLimitsChanged" }
 	| { type: "workspaceFilesChanged"; workspaceId: string }
 	| { type: "workspaceGitStateChanged"; workspaceId: string }
 	| { type: "workspacePrChanged"; workspaceId: string }
@@ -2012,6 +2014,22 @@ export async function generateSessionTitle(
 
 export async function hideSession(sessionId: string): Promise<void> {
 	await invoke("hide_session", { sessionId });
+}
+
+/** Read the opaque context-usage JSON for one session. Null when nothing
+ *  has been recorded yet (e.g. fresh session pre first turn). */
+export async function getSessionContextUsage(
+	sessionId: string,
+): Promise<string | null> {
+	return await invoke<string | null>("get_session_context_usage", {
+		sessionId,
+	});
+}
+
+/** Read the account-global Codex rate-limit snapshot. Null until Codex has
+ *  emitted at least one `account/rateLimits/updated` notification. */
+export async function getCodexRateLimits(): Promise<string | null> {
+	return await invoke<string | null>("get_codex_rate_limits");
 }
 
 export async function unhideSession(sessionId: string): Promise<void> {

@@ -580,6 +580,7 @@ export class ClaudeSessionManager implements SessionManager {
 					// will find `promptSource.closed` via the finally
 					// block below and return false (see the re-check in
 					// `steer()`).
+					await snapshotContextUsage(q, emitter, requestId, sessionId);
 					emitter.end(requestId);
 					return;
 				}
@@ -587,6 +588,11 @@ export class ClaudeSessionManager implements SessionManager {
 			emitter.end(requestId);
 		} catch (err) {
 			if (isAbortError(err)) {
+				// Aborted turns may still have consumed real context (the
+				// user typed and we tokenised it before they hit stop). Try
+				// to snapshot anyway — the Query is in a half-closed state
+				// so the SDK call may reject; swallow either way.
+				await snapshotContextUsage(q, emitter, requestId, sessionId);
 				emitter.aborted(requestId, "user_requested");
 				return;
 			}
@@ -1055,6 +1061,112 @@ function isTerminalSuccessResult(message: SDKMessage): boolean {
 		return false;
 	}
 	return (message as { is_error?: boolean }).is_error !== true;
+}
+
+/**
+ * Hard cap on how long we let `q.getContextUsage()` block the terminal
+ * `end`/`aborted` event. The snapshot is best-effort metadata for the ring;
+ * the user-visible turn-finished signal must NOT be hostage to a slow SDK
+ * control-message round-trip. 1.5s is generous (typical < 200ms) but
+ * bounded so a hung SDK can't stall the UI.
+ */
+const CONTEXT_USAGE_SNAPSHOT_TIMEOUT_MS = 1500;
+const SNAPSHOT_TIMEOUT_SENTINEL: unique symbol = Symbol("snapshot-timeout");
+
+/**
+ * Subset of `SDKControlGetContextUsageResponse` we actually consume on the
+ * frontend. Slimming here prevents the SDK's 30+ KB `gridRows` / `mcpTools`
+ * / `skills` payload from hitting the DB on every turn.
+ */
+type SlimClaudeContextUsage = {
+	totalTokens: number;
+	maxTokens: number;
+	percentage: number;
+	isAutoCompactEnabled: boolean;
+	categories: ReadonlyArray<{
+		name: string;
+		tokens: number;
+		color: string;
+	}>;
+};
+
+/**
+ * Reduce the SDK's full context-usage response to the fields the UI parses.
+ * Drops the "Free space" pseudo-category (it's the unallocated remainder,
+ * never useful to a user). Exported for tests.
+ */
+export function slimClaudeContextUsage(raw: unknown): SlimClaudeContextUsage {
+	const root = (raw ?? {}) as Record<string, unknown>;
+	const rawCategories = Array.isArray(root.categories) ? root.categories : [];
+	return {
+		totalTokens: typeof root.totalTokens === "number" ? root.totalTokens : 0,
+		maxTokens: typeof root.maxTokens === "number" ? root.maxTokens : 0,
+		percentage: typeof root.percentage === "number" ? root.percentage : 0,
+		isAutoCompactEnabled: root.isAutoCompactEnabled === true,
+		categories: rawCategories
+			.filter(
+				(entry): entry is { name: string; tokens: number; color: string } => {
+					if (!entry || typeof entry !== "object") return false;
+					const e = entry as { name?: unknown; tokens?: unknown };
+					return (
+						typeof e.name === "string" &&
+						e.name !== "Free space" &&
+						typeof e.tokens === "number"
+					);
+				},
+			)
+			.map(({ name, tokens, color }) => ({
+				name,
+				tokens,
+				color: typeof color === "string" ? color : "",
+			})),
+	};
+}
+
+/**
+ * Snapshot context usage from a (possibly half-closed) Query and emit it.
+ * Bounded by `CONTEXT_USAGE_SNAPSHOT_TIMEOUT_MS`; SDK rejection or timeout
+ * are both swallowed — the ring just keeps its previous value. Exported
+ * for testing the timeout path.
+ */
+export async function snapshotContextUsage(
+	q: Query,
+	emitter: SidecarEmitter,
+	requestId: string,
+	sessionId: string,
+): Promise<void> {
+	let timeoutId: ReturnType<typeof setTimeout> | undefined;
+	const timeoutPromise = new Promise<typeof SNAPSHOT_TIMEOUT_SENTINEL>(
+		(resolve) => {
+			timeoutId = setTimeout(
+				() => resolve(SNAPSHOT_TIMEOUT_SENTINEL),
+				CONTEXT_USAGE_SNAPSHOT_TIMEOUT_MS,
+			);
+		},
+	);
+	try {
+		const result = await Promise.race([q.getContextUsage(), timeoutPromise]);
+		if (result === SNAPSHOT_TIMEOUT_SENTINEL) {
+			logger.debug("context usage snapshot timed out", {
+				requestId,
+				sessionId,
+			});
+			return;
+		}
+		emitter.contextUsageUpdated(
+			requestId,
+			sessionId,
+			JSON.stringify(slimClaudeContextUsage(result)),
+		);
+	} catch (err) {
+		logger.debug("context usage snapshot failed", {
+			requestId,
+			sessionId,
+			...errorDetails(err),
+		});
+	} finally {
+		if (timeoutId !== undefined) clearTimeout(timeoutId);
+	}
 }
 
 function stripDeferredToolUseFromAssistant(message: SDKMessage): object | null {

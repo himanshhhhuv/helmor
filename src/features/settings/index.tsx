@@ -272,6 +272,25 @@ export const SettingsDialog = memo(function SettingsDialog({
 										/>
 									</div>
 
+									{/* Always show context usage */}
+									<div className="flex items-center justify-between rounded-xl border border-border/30 bg-muted/30 px-5 py-4">
+										<div className="mr-8">
+											<div className="text-[13px] font-medium leading-snug text-foreground">
+												Always show context usage
+											</div>
+											<div className="mt-1 text-[12px] leading-snug text-muted-foreground">
+												Always show context usage. By default, it is only shown
+												when more than 70% is used.
+											</div>
+										</div>
+										<Switch
+											checked={settings.alwaysShowContextUsage}
+											onCheckedChange={(checked) =>
+												updateSettings({ alwaysShowContextUsage: checked })
+											}
+										/>
+									</div>
+
 									{/* Follow-up behavior */}
 									<div className="flex items-center justify-between rounded-xl border border-border/30 bg-muted/30 px-5 py-4">
 										<div className="mr-8">

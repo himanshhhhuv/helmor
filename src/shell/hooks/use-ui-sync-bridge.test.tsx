@@ -106,6 +106,60 @@ describe("useUiSyncBridge", () => {
 		});
 	});
 
+	it("invalidates the codex rate-limits query on codexRateLimitsChanged", async () => {
+		const queryClient = makeClient();
+		const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+
+		renderHook(() =>
+			useUiSyncBridge({
+				queryClient,
+				processPendingCliSends: vi.fn(),
+				reloadSettings: vi.fn(),
+				refreshGithubIdentity: vi.fn(),
+			}),
+		);
+
+		act(() => {
+			capturedSubscription?.({ type: "codexRateLimitsChanged" });
+		});
+
+		await waitFor(() => {
+			expect(invalidateQueries).toHaveBeenCalledWith({
+				queryKey: helmorQueryKeys.codexRateLimits,
+			});
+		});
+		expect(invalidateQueries).toHaveBeenCalledTimes(1);
+	});
+
+	it("invalidates only the per-session usage query on contextUsageChanged", async () => {
+		const queryClient = makeClient();
+		const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+
+		renderHook(() =>
+			useUiSyncBridge({
+				queryClient,
+				processPendingCliSends: vi.fn(),
+				reloadSettings: vi.fn(),
+				refreshGithubIdentity: vi.fn(),
+			}),
+		);
+
+		act(() => {
+			capturedSubscription?.({
+				type: "contextUsageChanged",
+				sessionId: "session-7",
+			});
+		});
+
+		await waitFor(() => {
+			expect(invalidateQueries).toHaveBeenCalledWith({
+				queryKey: helmorQueryKeys.sessionContextUsage("session-7"),
+			});
+		});
+		// And only that key — no workspace-level cascades.
+		expect(invalidateQueries).toHaveBeenCalledTimes(1);
+	});
+
 	it("reloads settings and refreshes auto-close queries on settings changes", async () => {
 		const queryClient = makeClient();
 		const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");

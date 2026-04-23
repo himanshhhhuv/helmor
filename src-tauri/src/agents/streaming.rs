@@ -428,6 +428,101 @@ pub fn lookup_workspace_linked_directories(helmor_session_id: Option<&str>) -> V
     crate::workspaces::parse_linked_directory_paths(raw.as_deref())
 }
 
+/// Outcome of parsing+writing a `contextUsageUpdated` event.
+#[derive(Debug, PartialEq, Eq)]
+enum ContextUsageWriteOutcome {
+    /// Malformed event (missing/empty sessionId).
+    Skipped,
+    /// Event valid, DB row updated.
+    Wrote(String),
+    /// Event valid but `meta = null` — DB intentionally untouched.
+    NoMeta(String),
+    /// Event valid but no row matched the sessionId. Don't broadcast —
+    /// nobody is subscribed to a ghost session, and silently treating it
+    /// as a successful write would mask sidecar/DB races.
+    UnknownSession(String),
+}
+
+fn write_context_usage_meta(
+    conn: &rusqlite::Connection,
+    raw: &Value,
+) -> std::result::Result<ContextUsageWriteOutcome, rusqlite::Error> {
+    let Some(session_id) = raw.get("sessionId").and_then(Value::as_str) else {
+        return Ok(ContextUsageWriteOutcome::Skipped);
+    };
+    if session_id.is_empty() {
+        return Ok(ContextUsageWriteOutcome::Skipped);
+    }
+    let Some(meta) = raw.get("meta").and_then(Value::as_str) else {
+        return Ok(ContextUsageWriteOutcome::NoMeta(session_id.to_string()));
+    };
+    let affected = conn.execute(
+        "UPDATE sessions SET context_usage_meta = ?1 WHERE id = ?2",
+        params![meta, session_id],
+    )?;
+    if affected == 0 {
+        return Ok(ContextUsageWriteOutcome::UnknownSession(
+            session_id.to_string(),
+        ));
+    }
+    Ok(ContextUsageWriteOutcome::Wrote(session_id.to_string()))
+}
+
+/// Persist a `codexRateLimitsUpdated` event into the global settings table
+/// and broadcast `CodexRateLimitsChanged`. Account-scoped data — no
+/// session_id involved, so the event carries no payload.
+fn persist_codex_rate_limits_event(app: &AppHandle, raw: &Value) {
+    let Some(snapshot) = raw.get("snapshot").and_then(Value::as_str) else {
+        tracing::warn!("codexRateLimitsUpdated event missing snapshot");
+        return;
+    };
+    if let Err(err) = crate::models::settings::upsert_setting_value(
+        crate::models::settings::CODEX_RATE_LIMITS_KEY,
+        snapshot,
+    ) {
+        tracing::warn!("Failed to persist codex rate limits: {err}");
+        return;
+    }
+    crate::ui_sync::publish(app, crate::ui_sync::UiMutationEvent::CodexRateLimitsChanged);
+}
+
+/// Persist a `contextUsageUpdated` event and broadcast `ContextUsageChanged`
+/// to subscribers. Skips the broadcast when nothing actually changed (no
+/// matching row, malformed event).
+fn persist_context_usage_event(app: &AppHandle, raw: &Value) {
+    let outcome = match crate::models::db::write_conn() {
+        Ok(conn) => match write_context_usage_meta(&conn, raw) {
+            Ok(outcome) => outcome,
+            Err(err) => {
+                tracing::warn!("Failed to persist context_usage_meta: {err}");
+                return;
+            }
+        },
+        Err(err) => {
+            tracing::warn!("context_usage write_conn borrow failed: {err}");
+            return;
+        }
+    };
+    let session_id = match outcome {
+        ContextUsageWriteOutcome::Skipped => {
+            tracing::warn!("contextUsageUpdated event missing sessionId");
+            return;
+        }
+        ContextUsageWriteOutcome::UnknownSession(id) => {
+            tracing::warn!(
+                session_id = %id,
+                "contextUsageUpdated for unknown session — likely a stale/post-delete event"
+            );
+            return;
+        }
+        ContextUsageWriteOutcome::Wrote(id) | ContextUsageWriteOutcome::NoMeta(id) => id,
+    };
+    crate::ui_sync::publish(
+        app,
+        crate::ui_sync::UiMutationEvent::ContextUsageChanged { session_id },
+    );
+}
+
 fn should_adopt_provider_session_id(
     current_provider_session_id: Option<&str>,
     observed_provider_session_id: &str,
@@ -1115,6 +1210,12 @@ pub(super) fn stream_via_sidecar(
                         .and_then(Value::as_str)
                         .map(str::to_string);
                 }
+                "contextUsageUpdated" => {
+                    persist_context_usage_event(&app, &event.raw);
+                }
+                "codexRateLimitsUpdated" => {
+                    persist_codex_rate_limits_event(&app, &event.raw);
+                }
                 "elicitationRequest" => {
                     let resolved_model = pipeline
                         .as_ref()
@@ -1369,6 +1470,102 @@ mod tests {
             "helmor-session-1",
             Some("helmor-session-1"),
         ));
+    }
+
+    fn open_test_db_with_session(session_id: &str) -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::schema::ensure_schema(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO sessions (id, workspace_id, status) VALUES (?1, 'w1', 'idle')",
+            [session_id],
+        )
+        .unwrap();
+        conn
+    }
+
+    fn read_meta(conn: &rusqlite::Connection, session_id: &str) -> Option<String> {
+        conn.query_row(
+            "SELECT context_usage_meta FROM sessions WHERE id = ?1",
+            [session_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn write_context_usage_meta_persists_string() {
+        let conn = open_test_db_with_session("s1");
+        let raw = serde_json::json!({
+            "sessionId": "s1",
+            "meta": r#"{"totalTokens":42}"#,
+        });
+        let outcome = write_context_usage_meta(&conn, &raw).unwrap();
+        assert_eq!(outcome, ContextUsageWriteOutcome::Wrote("s1".to_string()));
+        assert_eq!(
+            read_meta(&conn, "s1").as_deref(),
+            Some(r#"{"totalTokens":42}"#)
+        );
+    }
+
+    #[test]
+    fn write_context_usage_meta_skips_when_meta_null() {
+        let conn = open_test_db_with_session("s1");
+        // Pre-seed so we can prove the row was NOT touched.
+        conn.execute(
+            "UPDATE sessions SET context_usage_meta = '{}' WHERE id = 's1'",
+            [],
+        )
+        .unwrap();
+        let raw = serde_json::json!({ "sessionId": "s1", "meta": null });
+        let outcome = write_context_usage_meta(&conn, &raw).unwrap();
+        assert_eq!(outcome, ContextUsageWriteOutcome::NoMeta("s1".to_string()));
+        // Pre-seeded value still there.
+        assert_eq!(read_meta(&conn, "s1").as_deref(), Some("{}"));
+    }
+
+    #[test]
+    fn write_context_usage_meta_skips_when_session_id_missing() {
+        let conn = open_test_db_with_session("s1");
+        for raw in [
+            serde_json::json!({}),
+            serde_json::json!({ "sessionId": "" }),
+            serde_json::json!({ "sessionId": null, "meta": "{}" }),
+        ] {
+            let outcome = write_context_usage_meta(&conn, &raw).unwrap();
+            assert_eq!(outcome, ContextUsageWriteOutcome::Skipped);
+        }
+        // Row never touched.
+        assert!(read_meta(&conn, "s1").is_none());
+    }
+
+    #[test]
+    fn write_context_usage_meta_reports_unknown_session() {
+        // UPDATE against a non-existent id affects 0 rows. The outcome must
+        // distinguish this from a real write so persist_context_usage_event
+        // can skip the broadcast — silently treating it as a write would
+        // mask sidecar/DB races (stale event after delete, etc.).
+        let conn = open_test_db_with_session("s1");
+        let raw = serde_json::json!({ "sessionId": "ghost", "meta": "{}" });
+        let outcome = write_context_usage_meta(&conn, &raw).unwrap();
+        assert_eq!(
+            outcome,
+            ContextUsageWriteOutcome::UnknownSession("ghost".to_string())
+        );
+        assert!(read_meta(&conn, "s1").is_none());
+    }
+
+    #[test]
+    fn write_context_usage_meta_null_meta_does_not_check_session_existence() {
+        // null meta is "no live Query", not a real DB update — we report
+        // NoMeta even when the session doesn't exist. The outcome is the
+        // same as for a known session so callers don't have to special-case.
+        let conn = open_test_db_with_session("s1");
+        let raw = serde_json::json!({ "sessionId": "ghost", "meta": null });
+        let outcome = write_context_usage_meta(&conn, &raw).unwrap();
+        assert_eq!(
+            outcome,
+            ContextUsageWriteOutcome::NoMeta("ghost".to_string())
+        );
     }
 
     #[test]

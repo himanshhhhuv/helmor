@@ -370,6 +370,33 @@ pub fn get_session_model(session_id: &str) -> Result<Option<String>> {
     Ok(model.filter(|s| !s.is_empty()))
 }
 
+/// Read the opaque `context_usage_meta` JSON for the composer's
+/// context-usage ring. Returns `Ok(None)` for missing rows OR empty meta —
+/// the ring renders a placeholder either way and the frontend RPC contract
+/// promises null on "not recorded yet". This matters for the create→fetch
+/// race and the delete-while-mounted race.
+pub fn get_session_context_usage(session_id: &str) -> Result<Option<String>> {
+    let conn = db::read_conn()?;
+    read_session_context_usage(&conn, session_id)
+}
+
+fn read_session_context_usage(conn: &Connection, session_id: &str) -> Result<Option<String>> {
+    let meta: Option<String> = match conn.query_row(
+        "SELECT context_usage_meta FROM sessions WHERE id = ?1",
+        [session_id],
+        |row| row.get(0),
+    ) {
+        Ok(value) => value,
+        Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+        Err(err) => {
+            return Err(err).with_context(|| {
+                format!("Failed to read context_usage_meta for session {session_id}")
+            });
+        }
+    };
+    Ok(meta.filter(|s| !s.is_empty()))
+}
+
 pub fn rename_session(session_id: &str, title: &str) -> Result<()> {
     let connection = db::write_conn()?;
 
@@ -882,5 +909,49 @@ mod tests {
             .filter_map(Result::ok)
             .collect();
         assert_eq!(roles, vec!["user", "assistant"]);
+    }
+
+    #[test]
+    fn read_session_context_usage_handles_missing_session() {
+        let (conn, _dir) = test_db();
+        seed(&conn);
+        // No row for "ghost" — must be Ok(None), NOT an error.
+        let meta = read_session_context_usage(&conn, "ghost").unwrap();
+        assert_eq!(meta, None);
+    }
+
+    #[test]
+    fn read_session_context_usage_returns_none_for_null_meta() {
+        let (conn, _dir) = test_db();
+        seed(&conn);
+        // Seeded session has context_usage_meta NULL by default.
+        let meta = read_session_context_usage(&conn, "s1").unwrap();
+        assert_eq!(meta, None);
+    }
+
+    #[test]
+    fn read_session_context_usage_returns_stored_string() {
+        let (conn, _dir) = test_db();
+        seed(&conn);
+        conn.execute(
+            "UPDATE sessions SET context_usage_meta = ?1 WHERE id = 's1'",
+            [r#"{"totalTokens":7}"#],
+        )
+        .unwrap();
+        let meta = read_session_context_usage(&conn, "s1").unwrap();
+        assert_eq!(meta.as_deref(), Some(r#"{"totalTokens":7}"#));
+    }
+
+    #[test]
+    fn read_session_context_usage_filters_empty_string_to_none() {
+        let (conn, _dir) = test_db();
+        seed(&conn);
+        conn.execute(
+            "UPDATE sessions SET context_usage_meta = '' WHERE id = 's1'",
+            [],
+        )
+        .unwrap();
+        let meta = read_session_context_usage(&conn, "s1").unwrap();
+        assert_eq!(meta, None);
     }
 }

@@ -6,6 +6,8 @@ import {
 	DEFAULT_WORKSPACE_GROUPS,
 	type DetectedEditor,
 	detectInstalledEditors,
+	getCodexRateLimits,
+	getSessionContextUsage,
 	listRepositories,
 	listSlashCommands,
 	listWorkspaceCandidateDirectories,
@@ -48,6 +50,9 @@ export const helmorQueryKeys = {
 		["workspaceDetail", workspaceId] as const,
 	workspaceSessions: (workspaceId: string) =>
 		["workspaceSessions", workspaceId] as const,
+	sessionContextUsage: (sessionId: string) =>
+		["sessionContextUsage", sessionId] as const,
+	codexRateLimits: ["codexRateLimits"] as const,
 	sessionMessages: (sessionId: string) =>
 		["sessionMessages", sessionId] as const,
 	workspaceChanges: (workspaceRootPath: string) =>
@@ -189,6 +194,22 @@ export function workspaceSessionsQueryOptions(workspaceId: string) {
 	return queryOptions({
 		queryKey: helmorQueryKeys.workspaceSessions(workspaceId),
 		queryFn: () => loadWorkspaceSessions(workspaceId),
+		staleTime: 0,
+	});
+}
+
+export function sessionContextUsageQueryOptions(sessionId: string) {
+	return queryOptions({
+		queryKey: helmorQueryKeys.sessionContextUsage(sessionId),
+		queryFn: () => getSessionContextUsage(sessionId),
+		staleTime: 0,
+	});
+}
+
+export function codexRateLimitsQueryOptions() {
+	return queryOptions({
+		queryKey: helmorQueryKeys.codexRateLimits,
+		queryFn: getCodexRateLimits,
 		staleTime: 0,
 	});
 }

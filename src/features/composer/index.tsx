@@ -49,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { clampEffort } from "@/lib/workspace-helpers";
 import { ComposerButton } from "./button";
 import { ContextBar } from "./context-bar";
+import { ContextUsageRing } from "./context-usage-ring";
 import type {
 	DeferredToolResponseHandler,
 	DeferredToolResponseOptions,
@@ -132,6 +133,12 @@ type WorkspaceComposerProps = {
 	pendingDeferredTool?: PendingDeferredTool | null;
 	onDeferredToolResponse?: DeferredToolResponseHandler;
 	hasPlanReview?: boolean;
+	/** When true, the ring is always rendered next to the send button.
+	 *  When false (the default), the ring auto-reveals only after usage
+	 *  crosses the threshold defined inside the ring component. */
+	alwaysShowContextUsage?: boolean;
+	/** Helmor session id for the context-usage ring. */
+	sessionId?: string | null;
 };
 
 const EMPTY_SLASH_COMMANDS: readonly SlashCommandEntry[] = [];
@@ -200,6 +207,8 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
 	pendingDeferredTool = null,
 	onDeferredToolResponse = noopDeferredToolResponse,
 	hasPlanReview = false,
+	alwaysShowContextUsage = false,
+	sessionId = null,
 }: WorkspaceComposerProps) {
 	const instanceIdRef = useRef(
 		`composer-${Math.random().toString(36).slice(2, 10)}`,
@@ -710,6 +719,13 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
 						</div>
 
 						<div className="flex items-center gap-2">
+							{sessionId ? (
+								<ContextUsageRing
+									sessionId={sessionId}
+									alwaysShow={alwaysShowContextUsage}
+									disabled={disabled}
+								/>
+							) : null}
 							{hasPlanReview && permissionMode === "plan" ? (
 								<>
 									<Button

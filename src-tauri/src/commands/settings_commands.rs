@@ -44,6 +44,15 @@ pub async fn update_app_settings(
     .await
 }
 
+/// Read the account-global Codex rate-limit snapshot. Stored under
+/// `settings::CODEX_RATE_LIMITS_KEY` by `agents/streaming.rs` whenever
+/// Codex emits an `account/rateLimits/updated` notification. Returns
+/// `Ok(None)` when no turn has run yet (fresh DB).
+#[tauri::command]
+pub async fn get_codex_rate_limits() -> CmdResult<Option<String>> {
+    run_blocking(|| settings::load_setting_value(settings::CODEX_RATE_LIMITS_KEY)).await
+}
+
 #[tauri::command]
 pub async fn load_auto_close_action_kinds() -> CmdResult<Vec<ActionKind>> {
     run_blocking(settings::load_auto_close_action_kinds).await

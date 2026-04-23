@@ -341,6 +341,42 @@ export class CodexAppServerManager implements SessionManager {
 					}
 				}
 
+				// Forward Codex token usage to the context-usage ring.
+				if (n.method === "thread/tokenUsage/updated") {
+					const tokenUsage = deepGet(n.params, "tokenUsage");
+					if (tokenUsage && typeof tokenUsage === "object") {
+						try {
+							emitter.contextUsageUpdated(
+								requestId,
+								sessionId,
+								JSON.stringify(tokenUsage),
+							);
+						} catch (err) {
+							logger.debug("contextUsageUpdated emit failed", {
+								sessionId,
+								...errorDetails(err),
+							});
+						}
+					}
+				}
+
+				// Forward Codex account-global rate limits (5h / 7d windows).
+				if (n.method === "account/rateLimits/updated") {
+					const rateLimits = deepGet(n.params, "rateLimits");
+					if (rateLimits && typeof rateLimits === "object") {
+						try {
+							emitter.codexRateLimitsUpdated(
+								requestId,
+								JSON.stringify(rateLimits),
+							);
+						} catch (err) {
+							logger.debug("codexRateLimitsUpdated emit failed", {
+								...errorDetails(err),
+							});
+						}
+					}
+				}
+
 				if (n.method === "turn/completed") {
 					const completedTurnId =
 						deepGet(n.params, "turn", "id") ?? deepGet(n.params, "turnId");

@@ -343,6 +343,13 @@ fn run_migrations(connection: &Connection) -> Result<()> {
             .context("Failed to drop deprecated diff_comments column")?;
     }
 
+    // Migration: opaque JSON snapshot for the composer's context-usage ring.
+    if !has_column(connection, "sessions", "context_usage_meta") {
+        connection
+            .execute_batch("ALTER TABLE sessions ADD COLUMN context_usage_meta TEXT")
+            .context("Failed to add context_usage_meta column")?;
+    }
+
     drop_dead_schema(connection)?;
 
     // Migration: remap legacy "opus-1m" model ID — the CLI no longer accepts it.
@@ -428,6 +435,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     effort_level TEXT DEFAULT 'high',
     fast_mode INTEGER DEFAULT 0,
     action_kind TEXT,
+    context_usage_meta TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -960,5 +968,58 @@ mod tests {
         ensure_schema(&connection).unwrap();
         drop_dead_schema(&connection).unwrap();
         drop_dead_schema(&connection).unwrap();
+    }
+
+    #[test]
+    fn context_usage_meta_added_to_legacy_and_idempotent() {
+        // Legacy schema (pre-feature) has no context_usage_meta column.
+        // The migration must add it, preserve existing rows, and survive
+        // a second run.
+        let (connection, _dir) = open_test_db();
+        create_legacy_schema(&connection);
+        assert!(!column_exists(
+            &connection,
+            "sessions",
+            "context_usage_meta"
+        ));
+
+        run_migrations(&connection).unwrap();
+        assert!(column_exists(&connection, "sessions", "context_usage_meta"));
+
+        // Re-run is a no-op (no error, column still there).
+        run_migrations(&connection).unwrap();
+        assert!(column_exists(&connection, "sessions", "context_usage_meta"));
+    }
+
+    #[test]
+    fn context_usage_meta_present_on_fresh_install() {
+        // Fresh DB created via ensure_schema includes the column without
+        // needing a separate migration pass.
+        let (connection, _dir) = open_test_db();
+        ensure_schema(&connection).unwrap();
+        assert!(column_exists(&connection, "sessions", "context_usage_meta"));
+    }
+
+    #[test]
+    fn context_usage_meta_round_trips_opaque_json() {
+        let (connection, _dir) = open_test_db();
+        ensure_schema(&connection).unwrap();
+        connection
+            .execute(
+                "INSERT INTO sessions (id, context_usage_meta) VALUES ('s1', ?1)",
+                [r#"{"totalTokens":12,"maxTokens":100}"#],
+            )
+            .unwrap();
+        let stored: Option<String> = connection
+            .query_row(
+                "SELECT context_usage_meta FROM sessions WHERE id = 's1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            stored.as_deref(),
+            Some(r#"{"totalTokens":12,"maxTokens":100}"#)
+        );
     }
 }

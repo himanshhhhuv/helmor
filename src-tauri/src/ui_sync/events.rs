@@ -10,6 +10,12 @@ pub enum UiMutationEvent {
     SessionListChanged {
         workspace_id: String,
     },
+    ContextUsageChanged {
+        session_id: String,
+    },
+    /// Account-global Codex rate-limit snapshot updated. No payload — the
+    /// frontend re-fetches via `get_codex_rate_limits`.
+    CodexRateLimitsChanged,
     WorkspaceFilesChanged {
         workspace_id: String,
     },

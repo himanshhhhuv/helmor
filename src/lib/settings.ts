@@ -23,7 +23,18 @@ export type AppSettings = {
 	/** Webview zoom factor. 1.0 = 100%. Range 0.5–2.0. */
 	zoomLevel: number;
 	followUpBehavior: FollowUpBehavior;
+	/** Force the context-usage ring to always be visible. When false (the
+	 *  default), the ring auto-hides until usage crosses
+	 *  `CONTEXT_USAGE_AUTO_REVEAL_THRESHOLD`. */
+	alwaysShowContextUsage: boolean;
 };
+
+/**
+ * Percentage of the context window above which the ring auto-reveals
+ * even when `alwaysShowContextUsage` is off. Picked to match the
+ * settings copy ("…only shown when more than 70% is used").
+ */
+export const CONTEXT_USAGE_AUTO_REVEAL_THRESHOLD = 70;
 
 export const DEFAULT_SETTINGS: AppSettings = {
 	fontSize: 14,
@@ -38,6 +49,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 	defaultFastMode: false,
 	zoomLevel: 1.0,
 	followUpBehavior: "steer",
+	alwaysShowContextUsage: false,
 };
 
 export const THEME_STORAGE_KEY = "helmor-theme";
@@ -55,6 +67,7 @@ const SETTINGS_KEY_MAP: Record<Exclude<keyof AppSettings, "theme">, string> = {
 	defaultFastMode: "app.default_fast_mode",
 	zoomLevel: "app.zoom_level",
 	followUpBehavior: "app.follow_up_behavior",
+	alwaysShowContextUsage: "app.always_show_context_usage",
 };
 
 export async function loadSettings(): Promise<AppSettings> {
@@ -101,6 +114,10 @@ export async function loadSettings(): Promise<AppSettings> {
 					? v
 					: DEFAULT_SETTINGS.followUpBehavior;
 			})(),
+			alwaysShowContextUsage:
+				raw[SETTINGS_KEY_MAP.alwaysShowContextUsage] !== undefined
+					? raw[SETTINGS_KEY_MAP.alwaysShowContextUsage] === "true"
+					: DEFAULT_SETTINGS.alwaysShowContextUsage,
 		};
 	} catch {
 		return { ...DEFAULT_SETTINGS };

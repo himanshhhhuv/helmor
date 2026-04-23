@@ -739,6 +739,8 @@ export const WorkspaceComposerContainer = memo(
 					</div>
 					<WorkspaceComposer
 						contextKey={composerContextKey}
+						sessionId={displayedSessionId}
+						alwaysShowContextUsage={settings.alwaysShowContextUsage}
 						onSubmit={handleComposerSubmit}
 						disabled={composerUnavailable}
 						submitDisabled={

@@ -62,6 +62,11 @@ pub async fn list_hidden_sessions(
 }
 
 #[tauri::command]
+pub async fn get_session_context_usage(session_id: String) -> CmdResult<Option<String>> {
+    run_blocking(move || sessions::get_session_context_usage(&session_id)).await
+}
+
+#[tauri::command]
 pub async fn mark_session_read(session_id: String) -> CmdResult<()> {
     run_blocking(move || sessions::mark_session_read(&session_id)).await
 }

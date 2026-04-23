@@ -73,6 +73,11 @@ pub fn upsert_setting_json<T: Serialize>(key: &str, value: &T) -> Result<()> {
 const AUTO_CLOSE_ACTION_KINDS_KEY: &str = "auto_close_action_kinds";
 const AUTO_CLOSE_OPT_IN_ASKED_KEY: &str = "auto_close_opt_in_asked";
 
+/// Account-global Codex rate-limit snapshot (raw `RateLimitSnapshot` JSON).
+/// Written by the streaming pipeline whenever Codex emits an
+/// `account/rateLimits/updated` notification, read by the composer ring.
+pub const CODEX_RATE_LIMITS_KEY: &str = "app.codex_rate_limits";
+
 /// Action kinds the user has opted-in to auto-close. Action sessions whose
 /// `action_kind` appears in this list are hidden automatically after their
 /// verifier reports `Success`.
