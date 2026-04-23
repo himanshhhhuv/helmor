@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.6.0
+
+### Minor Changes
+
+- [#190](https://github.com/dohooo/helmor/pull/190) [`ba14555`](https://github.com/dohooo/helmor/commit/ba145557e7e30ae2a2f1b065f21d2dcffb83d36f) Thanks [@dohooo](https://github.com/dohooo)! - Ship a sidebar clone flow and a couple of readability polish fixes:
+
+  - Add "Clone from URL" to the Workspaces add-repository menu so you can paste a Git URL, pick a clone location, and have Helmor clone and import the repository as a new workspace in one step.
+  - Fix sidebar workspace titles clipping descenders (g / j / p / q / y) at the bottom edge when the app is zoomed out.
+  - Restore vertical rhythm around assistant markdown headings and add a touch of horizontal breathing room to inline code in chat messages.
+
+- [#197](https://github.com/dohooo/helmor/pull/197) [`1f0e5e7`](https://github.com/dohooo/helmor/commit/1f0e5e7380a6588a7f3ba56aefe4649f91b0d085) Thanks [@natllian](https://github.com/natllian)! - Add a context-usage ring next to the composer's send button that shows current token usage with a hover popover; the ring auto-reveals once usage crosses 70% of the model context window, or can be set to always show via a new "Always show context usage" toggle in Settings.
+
+- [#200](https://github.com/dohooo/helmor/pull/200) [`4bb9fd6`](https://github.com/dohooo/helmor/commit/4bb9fd6f10beab55417f092ac49b621eb0e1c062) Thanks [@natllian](https://github.com/natllian)! - Add a per-repository Auto-run toggle for setup scripts so new workspaces can either run setup immediately on creation or stay ready for manual setup from the Setup tab.
+
+### Patch Changes
+
+- [#194](https://github.com/dohooo/helmor/pull/194) [`cfe8f67`](https://github.com/dohooo/helmor/commit/cfe8f672dfb27029431372828f136f6cef2688e6) Thanks [@natllian](https://github.com/natllian)! - Drop unused database tables and columns.
+
+- [#195](https://github.com/dohooo/helmor/pull/195) [`25cfefc`](https://github.com/dohooo/helmor/commit/25cfefc2788c3e9bec98f93d500b6c897fe387c7) Thanks [@natllian](https://github.com/natllian)! - Improve error visibility and file navigation in chat responses:
+
+  - Let local file references in assistant messages open directly in Helmor's in-app editor at the referenced line when the file is inside the current workspace.
+  - Preserve specific Claude API errors like unexpected socket disconnects instead of collapsing them into a generic "unknown error" notice.
+
+- [#187](https://github.com/dohooo/helmor/pull/187) [`9e41cd7`](https://github.com/dohooo/helmor/commit/9e41cd7dfbf153a9737000f78c04aee0a920d515) Thanks [@natllian](https://github.com/natllian)! - Keep queued follow-up prompts overlaying the composer instead of shrinking the thread, and show a proper icon for streamed Skill entries.
+
+- [#196](https://github.com/dohooo/helmor/pull/196) [`34ce8a4`](https://github.com/dohooo/helmor/commit/34ce8a4e50b0bd198334ae3bd1dc71aebf15f31e) Thanks [@natllian](https://github.com/natllian)! - Fix Codex sessions so sandbox mode changes apply on later turns and Git worktree metadata directories stay writable for commit and push operations.
+
+- [#193](https://github.com/dohooo/helmor/pull/193) [`6e77a94`](https://github.com/dohooo/helmor/commit/6e77a944507511e87c4ab0912d2ff8fe11d50644) Thanks [@natllian](https://github.com/natllian)! - Refresh the inspector's Actions panel immediately after switching target branch, so the sync-with-remote row shows the new ahead/behind numbers right away instead of lagging up to ten seconds behind.
+
+- [#198](https://github.com/dohooo/helmor/pull/198) [`0ce21bb`](https://github.com/dohooo/helmor/commit/0ce21bbcf38229f1d834dfbe2ebf219771c74c9f) Thanks [@natllian](https://github.com/natllian)! - Fix Cmd+Q on macOS so quitting while a task is running now shows the same confirmation dialog as the window close button instead of exiting immediately.
+
+- [#199](https://github.com/dohooo/helmor/pull/199) [`e5abd9c`](https://github.com/dohooo/helmor/commit/e5abd9c8a0dc56ec67685b2b7dd7f3e81c802733) Thanks [@dohooo](https://github.com/dohooo)! - Stop the workspace sidebar and command palette from showing a stray scrollbar in production builds.
+
+- [#199](https://github.com/dohooo/helmor/pull/199) [`0d0050b`](https://github.com/dohooo/helmor/commit/0d0050b7e8a9f5667e9737cbb198affe3c6e053b) Thanks [@dohooo](https://github.com/dohooo)! - Fix multiple chat viewport scrolling glitches during streaming:
+
+  - Eliminate the near-bottom flicker, the mid-stream auto-scroll stall, and the first-chunk overshoot that could leave the view stranded mid-reply.
+  - Keep the streaming logo and timer reliably pinned to the end of the assistant output instead of briefly covering text or snapping back into place a moment later.
+  - Stop the viewport from bouncing up and down by about one line once a single reply grows taller than the screen on fast models.
+
+- [#191](https://github.com/dohooo/helmor/pull/191) [`c582325`](https://github.com/dohooo/helmor/commit/c5823254ba1a77ff9733cf6d025ad178b6ba49c9) Thanks [@natllian](https://github.com/natllian)! - Fix stuck sessions caused by SQLite contention and unresponsive sidecars:
+
+  - Eliminate the "database is locked" failures that could interrupt session actions (marking read, pinning, renaming) while an AI turn was actively writing to the DB.
+  - Detect a frozen or disconnected sidecar via heartbeat and surface a retry-able error instead of leaving the session stuck in a streaming state.
+
+- [#196](https://github.com/dohooo/helmor/pull/196) [`12f3749`](https://github.com/dohooo/helmor/commit/12f374986ddd2f6459859cb05ddcf895f660085b) Thanks [@natllian](https://github.com/natllian)! - Add a hover-only copy button for user chat bubbles and remove the copy button fade animation so message actions appear immediately.
+
 ## 0.5.0
 
 ### Minor Changes
