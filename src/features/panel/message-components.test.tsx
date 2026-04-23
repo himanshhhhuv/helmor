@@ -201,6 +201,7 @@ describe("MemoConversationMessage plan review", () => {
 			content: [
 				{
 					type: "text",
+					id: "user-copy-source:text-0",
 					text: "Ship the action slot.",
 				},
 			],
