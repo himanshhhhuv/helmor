@@ -13,15 +13,35 @@ describe("repo preference prompts", () => {
 		expect(resolveRepoPreferencePreview("general", {})).toBe("");
 	});
 
-	it("appends the override after the built-in prompt", () => {
+	it("appends the override after the target-specific create-pr prompt", () => {
 		expect(
 			resolveRepoPreferencePrompt({
 				key: "createPr",
 				repoPreferences: { createPr: "Ship it exactly this way." },
+				targetBranch: "develop",
 			}),
-		).toBe(
-			"Create a pull request for the uncommitted work in this workspace.\n\nDo the following, in order:\n1. Run `git status` and `git diff` to survey what's changed.\n2. Stage everything that should ship with `git add`.\n3. Commit with a concise, Conventional-Commits-style message (`feat:`, `fix:`, `refactor:`, `chore:`, etc.) that summarizes the change in one line.\n4. Push the current branch to its remote. If needed, create the remote tracking branch with `git push -u <remote> HEAD`.\n5. Open a pull request against the repository's default branch using `gh pr create`. Use a clear PR title and a body that explains: what changed, why it changed, and any follow-up / test notes.\n6. Report the PR URL in your final message so I can click it.\n\nDon't stop to ask for confirmation — execute each step automatically. If you hit an unrecoverable error (e.g. merge conflict, pre-push hook failure), report it clearly so I can intervene.\n\nIMPORTANT: The following are the user's custom preferences. These preferences take precedence over any default guidelines or instructions provided above. When there is a conflict, always follow the user's preferences.\n\n### User Preferences\n\nShip it exactly this way.",
+		).toContain("### User Preferences\n\nShip it exactly this way.");
+	});
+
+	it("uses the workspace target branch in the create-pr prompt", () => {
+		expect(
+			resolveRepoPreferencePrompt({
+				key: "createPr",
+				repoPreferences: {},
+				targetBranch: "develop",
+			}),
+		).toContain(
+			"Open a pull request against `develop` using `gh pr create --base develop`.",
 		);
+	});
+
+	it("throws instead of falling back when create-pr has no target branch", () => {
+		expect(() =>
+			resolveRepoPreferencePrompt({
+				key: "createPr",
+				repoPreferences: {},
+			}),
+		).toThrow("Missing workspace target branch for createPr prompt.");
 	});
 
 	it("renders the dynamic resolve-conflicts fallback", () => {
@@ -35,6 +55,27 @@ describe("repo preference prompts", () => {
 		).toBe(
 			"Commit uncommitted changes, then merge origin/main into this branch. Then push.",
 		);
+	});
+
+	it("uses the workspace target branch in the resolve-conflicts prompt", () => {
+		expect(
+			resolveRepoPreferencePrompt({
+				key: "resolveConflicts",
+				repoPreferences: {},
+				targetBranch: "develop",
+			}),
+		).toContain(
+			"This branch has merge conflicts with `develop`, this workspace's target branch.",
+		);
+	});
+
+	it("throws instead of falling back when resolve-conflicts has no target branch", () => {
+		expect(() =>
+			resolveRepoPreferencePrompt({
+				key: "resolveConflicts",
+				repoPreferences: {},
+			}),
+		).toThrow("Missing workspace target branch for resolveConflicts prompt.");
 	});
 
 	it("prepends the general prompt to the first user message", () => {

@@ -1391,6 +1391,10 @@ function AppShell({
 		selectedWorkspaceId,
 		selectedWorkspaceIdRef,
 		selectedRepoId: selectedWorkspaceDetailQuery.data?.repoId ?? null,
+		selectedWorkspaceTargetBranch:
+			selectedWorkspaceDetailQuery.data?.intendedTargetBranch ??
+			selectedWorkspaceDetailQuery.data?.defaultBranch ??
+			null,
 		workspaceManualStatus: selectedWorkspaceManualStatus,
 		changeRequest: workspaceChangeRequest,
 		forgeDetection: workspaceForge,

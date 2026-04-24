@@ -94,6 +94,7 @@ export function useWorkspaceCommitLifecycle({
 	selectedWorkspaceId,
 	selectedWorkspaceIdRef,
 	selectedRepoId,
+	selectedWorkspaceTargetBranch,
 	workspaceManualStatus,
 	changeRequest,
 	forgeDetection,
@@ -110,6 +111,7 @@ export function useWorkspaceCommitLifecycle({
 	selectedWorkspaceId: string | null;
 	selectedWorkspaceIdRef: MutableRefObject<string | null>;
 	selectedRepoId: string | null;
+	selectedWorkspaceTargetBranch?: string | null;
 	workspaceManualStatus: DerivedStatus | null;
 	changeRequest?: ChangeRequestInfo | null;
 	forgeDetection?: ForgeDetection | null;
@@ -314,7 +316,12 @@ export function useWorkspaceCommitLifecycle({
 				const forge = await queryClient
 					.ensureQueryData(workspaceForgeQueryOptions(workspaceId))
 					.catch(() => null);
-				const prompt = buildCommitButtonPrompt(mode, repoPreferences, forge);
+				const prompt = buildCommitButtonPrompt(
+					mode,
+					repoPreferences,
+					selectedWorkspaceTargetBranch,
+					forge,
+				);
 				console.log("[commitButton] session created", { sessionId });
 
 				await queryClient.invalidateQueries({
@@ -347,6 +354,7 @@ export function useWorkspaceCommitLifecycle({
 			changeRequestName,
 			queryClient,
 			selectedRepoId,
+			selectedWorkspaceTargetBranch,
 			selectedWorkspaceIdRef,
 			workspaceManualStatus,
 		],

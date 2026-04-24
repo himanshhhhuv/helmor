@@ -25,10 +25,11 @@ const ACTION_MODE_TO_PREFERENCE_KEY: Record<
 export function buildCommitButtonPrompt(
 	mode: ActionSessionMode,
 	repoPreferences?: RepoPreferences | null,
+	targetBranch?: string | null,
 	forge?: ForgeDetection | null,
 ): string {
 	if (forge?.provider === "gitlab") {
-		return buildGitLabCommitButtonPrompt(mode, repoPreferences);
+		return buildGitLabCommitButtonPrompt(mode, repoPreferences, targetBranch);
 	}
 
 	switch (mode) {
@@ -51,6 +52,7 @@ Use \`gh pr reopen\` + \`gh pr comment\`. Report the PR URL when done.`;
 			return resolveRepoPreferencePrompt({
 				key: ACTION_MODE_TO_PREFERENCE_KEY[mode],
 				repoPreferences,
+				targetBranch,
 			});
 	}
 }
@@ -58,6 +60,7 @@ Use \`gh pr reopen\` + \`gh pr comment\`. Report the PR URL when done.`;
 function buildGitLabCommitButtonPrompt(
 	mode: ActionSessionMode,
 	repoPreferences?: RepoPreferences | null,
+	targetBranch?: string | null,
 ): string {
 	switch (mode) {
 		case "commit-and-push":
@@ -99,6 +102,7 @@ Don't stop to ask for confirmation — execute each step automatically. If you h
 			return resolveRepoPreferencePrompt({
 				key: "resolveConflicts",
 				repoPreferences,
+				targetBranch,
 			});
 	}
 }
