@@ -72,17 +72,25 @@ pub async fn generate_session_title(
                    WHERE s.id = ?1 AND w.state {}"#,
             workspace_state::OPERATIONAL_FILTER,
         );
-        connection
-            .query_row(&sql, [&request.session_id], |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                ))
-            })
-            .ok()
+        match connection.query_row(&sql, [&request.session_id], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        }) {
+            Ok(info) => Some(info),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(error) => {
+                tracing::error!(
+                    session_id = %request.session_id,
+                    "generate_session_title: workspace lookup SQL failed: {error:#}"
+                );
+                None
+            }
+        }
     } else {
         None
     };
@@ -207,6 +215,19 @@ pub async fn generate_session_title(
     .map_err(|e| anyhow::anyhow!("Title generation task failed: {e}"))?;
 
     let (generated_title, generated_branch) = result;
+
+    if should_generate_title && generated_title.is_none() {
+        tracing::error!(
+            session_id = %session_id,
+            "generate_session_title: sidecar returned no title, but title generation was expected"
+        );
+    }
+    if should_generate_branch && generated_branch.is_none() {
+        tracing::error!(
+            session_id = %session_id,
+            "generate_session_title: sidecar returned no branch name, but branch rename was expected"
+        );
+    }
 
     let mut title_renamed = false;
     if should_generate_title {
