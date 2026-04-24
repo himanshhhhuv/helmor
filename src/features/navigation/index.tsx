@@ -644,7 +644,7 @@ export const WorkspacesSidebar = memo(function WorkspacesSidebar({
 			<div
 				ref={scrollContainerRef}
 				data-slot="workspace-groups-scroll"
-				className="scrollbar-stable relative mt-2 min-h-0 flex-1 overflow-y-auto px-2 pr-1"
+				className="relative mt-2 min-h-0 flex-1 overflow-y-auto px-2 pr-3"
 			>
 				<div
 					style={{

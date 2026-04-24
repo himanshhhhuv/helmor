@@ -290,10 +290,15 @@ body {
 		width: 8px;
 		height: 8px;
 		background: transparent;
+		background-color: transparent;
 	}
 
-	*::-webkit-scrollbar-track {
-		background: transparent;
+	*::-webkit-scrollbar-track,
+	*::-webkit-scrollbar-track-piece {
+		background: transparent !important;
+		background-color: transparent !important;
+		border: 0;
+		box-shadow: none;
 	}
 
 	*::-webkit-scrollbar-thumb {
@@ -308,8 +313,10 @@ body {
 		background-clip: padding-box;
 	}
 
-	*::-webkit-scrollbar-corner {
-		background: transparent;
+	*::-webkit-scrollbar-corner,
+	*::-webkit-scrollbar-button {
+		background: transparent !important;
+		background-color: transparent !important;
 	}
 }
 
