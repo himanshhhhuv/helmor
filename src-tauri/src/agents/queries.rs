@@ -1,5 +1,6 @@
 use std::sync::Mutex;
 
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
@@ -234,13 +235,27 @@ pub async fn generate_session_title(
         if let Some(ref title) = generated_title {
             let connection = crate::models::db::read_conn()
                 .map_err(|e| anyhow::anyhow!("Failed to open DB: {e}"))?;
-            let latest_title: String = connection
+            // Session may have been deleted while title generation was in flight.
+            // Treat as a silent skip — matches the branch re-read a few lines below.
+            let latest_title: Option<String> = connection
                 .query_row(
                     "SELECT title FROM sessions WHERE id = ?1",
                     [&session_id],
                     |row| row.get(0),
                 )
+                .optional()
                 .map_err(|e| anyhow::anyhow!("Failed to re-read session title: {e}"))?;
+            let Some(latest_title) = latest_title else {
+                tracing::debug!(
+                    session_id = %session_id,
+                    "Skipping auto session rename: session deleted during title generation"
+                );
+                return Ok(GenerateSessionTitleResponse {
+                    title: generated_title,
+                    branch_renamed: false,
+                    skipped: false,
+                });
+            };
 
             if can_replace_session_title(&latest_title, request.title_seed.as_deref()) {
                 crate::sessions::rename_session(&session_id, title)

@@ -16,7 +16,7 @@ import {
 	type SDKMessage,
 	type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { isAbortError } from "./abort.js";
+import { isAbortError, isQueryClosedTransient } from "./abort.js";
 import {
 	applyClaudeModelOverrides,
 	claudeModelSupportsFastMode,
@@ -791,6 +791,22 @@ export class ClaudeSessionManager implements SessionManager {
 	 * which lets the iterator return naturally as part of teardown.
 	 */
 	async listSlashCommands(
+		params: ListSlashCommandsParams,
+	): Promise<readonly SlashCommandInfo[]> {
+		// Retry once on "Query closed before response received" — it's a
+		// transient race (claude-code child preempted or torn down between
+		// init and the control-protocol reply), not a real failure.
+		try {
+			return await this.listSlashCommandsOnce(params);
+		} catch (err) {
+			if (isQueryClosedTransient(err)) {
+				return this.listSlashCommandsOnce(params);
+			}
+			throw err;
+		}
+	}
+
+	private async listSlashCommandsOnce(
 		params: ListSlashCommandsParams,
 	): Promise<readonly SlashCommandInfo[]> {
 		const { cwd } = params;

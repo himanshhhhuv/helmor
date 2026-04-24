@@ -216,7 +216,9 @@ pub(crate) fn mark_session_unread_in_transaction(
         )
         .with_context(|| format!("Failed to mark session {session_id} as unread"))?;
 
-    if updated_rows != 1 {
+    // 0 rows = session was deleted mid-flight; benign race, skip silently.
+    // >1 rows = duplicate primary key, genuinely broken schema.
+    if updated_rows > 1 {
         bail!("Session unread update affected {updated_rows} rows for session {session_id}");
     }
 
