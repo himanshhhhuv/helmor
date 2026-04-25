@@ -189,6 +189,17 @@ export function AppOnboarding({ onComplete }: AppOnboardingProps) {
 
 			<div
 				aria-hidden
+				className="pointer-events-none absolute inset-0 opacity-[0.08]"
+				style={{
+					backgroundImage:
+						"linear-gradient(to right, var(--color-foreground) 1px, transparent 1px), linear-gradient(to bottom, var(--color-foreground) 1px, transparent 1px)",
+					backgroundSize: "42px 42px",
+					maskImage:
+						"radial-gradient(ellipse 82% 68% at 50% 42%, black 15%, transparent 78%)",
+				}}
+			/>
+			<div
+				aria-hidden
 				className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-background via-background/80 to-transparent"
 			/>
 
