@@ -1,14 +1,16 @@
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { devResetAllData, loadDataInfo } from "@/lib/api";
+import { saveSettings } from "@/lib/settings";
 
 export function DevToolsPanel() {
 	const [dataDir, setDataDir] = useState<string | null>(null);
 	const [confirmOpen, setConfirmOpen] = useState(false);
 	const [resetting, setResetting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [onboardingReset, setOnboardingReset] = useState(false);
 
 	useEffect(() => {
 		void loadDataInfo().then((info) => {
@@ -32,8 +34,40 @@ export function DevToolsPanel() {
 		}
 	}, []);
 
+	const handleResetOnboarding = useCallback(() => {
+		void saveSettings({ onboardingCompleted: false });
+		setOnboardingReset(true);
+	}, []);
+
 	return (
 		<div className="flex flex-col gap-3">
+			<div className="rounded-xl border border-border/30 bg-muted/30 px-5 py-4">
+				<div className="flex items-center gap-2 text-[13px] font-medium leading-snug text-foreground">
+					<RotateCcw
+						className="size-3.5 text-muted-foreground"
+						strokeWidth={1.8}
+					/>
+					Show Onboarding Again
+				</div>
+				<div className="mt-1 text-[12px] leading-snug text-muted-foreground">
+					Mark onboarding as incomplete so it appears the next time Helmor
+					starts.
+				</div>
+				<Button
+					variant="outline"
+					size="sm"
+					className="mt-3"
+					onClick={handleResetOnboarding}
+				>
+					Reset Onboarding
+				</Button>
+				{onboardingReset && (
+					<div className="mt-2 text-[11px] text-muted-foreground">
+						Onboarding will be shown on the next launch.
+					</div>
+				)}
+			</div>
+
 			{/* Reset All Data */}
 			<div className="rounded-xl border border-border/30 bg-muted/30 px-5 py-4">
 				<div className="flex items-center gap-2 text-[13px] font-medium leading-snug text-foreground">

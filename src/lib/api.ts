@@ -538,6 +538,22 @@ export async function installCli(): Promise<CliStatus> {
 	return await invoke<CliStatus>("install_cli");
 }
 
+export async function enterOnboardingWindowMode(): Promise<void> {
+	await invoke("enter_onboarding_window_mode");
+}
+
+export async function exitOnboardingWindowMode(): Promise<void> {
+	await invoke("exit_onboarding_window_mode");
+}
+
+export type AgentLoginProvider = "claude" | "codex";
+
+export async function openAgentLoginTerminal(
+	provider: AgentLoginProvider,
+): Promise<void> {
+	await invoke("open_agent_login_terminal", { provider });
+}
+
 export type DevResetResult = {
 	reposDeleted: number;
 	workspacesDeleted: number;

@@ -8,16 +8,8 @@ import {
 	PanelLeftClose,
 	PanelLeftOpen,
 } from "lucide-react";
-import {
-	useCallback,
-	useEffect,
-	useLayoutEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ConductorOnboarding } from "@/components/conductor-onboarding";
 import { QuitConfirmDialog } from "@/components/quit-confirm-dialog";
 import { SplashScreen } from "@/components/splash-screen";
 import { Button } from "@/components/ui/button";
@@ -35,6 +27,7 @@ import { useDockUnreadBadge } from "@/features/dock-badge";
 import { WorkspaceEditorSurface } from "@/features/editor";
 import { WorkspaceInspectorSidebar } from "@/features/inspector";
 import { WorkspacesSidebarContainer } from "@/features/navigation/container";
+import { AppOnboarding } from "@/features/onboarding";
 import { seedNewSessionInCache } from "@/features/panel/session-cache";
 import { closeWorkspaceSession } from "@/features/panel/session-close";
 import { SettingsButton, SettingsDialog } from "@/features/settings";
@@ -61,13 +54,9 @@ import {
 } from "@/shell/layout";
 import { useZoom } from "@/shell/use-zoom";
 import {
-	type ConductorWorkspace,
 	createSession,
 	type DerivedStatus,
 	drainPendingCliSends,
-	isConductorAvailable,
-	listConductorRepos,
-	listConductorWorkspaces,
 	markSessionRead,
 	markSessionUnread,
 	openWorkspaceInEditor,
@@ -170,6 +159,27 @@ function MainApp() {
 	const [splashVisible, setSplashVisible] = useState(true);
 	const [splashMounted, setSplashMounted] = useState(true);
 
+	const hideSplashAfterBoot = useCallback(() => {
+		window.setTimeout(() => {
+			setSplashVisible(false);
+			window.setTimeout(() => setSplashMounted(false), 400);
+		}, 1000);
+	}, []);
+
+	const completeOnboarding = useCallback(() => {
+		setSplashMounted(true);
+		setSplashVisible(true);
+		setAppSettings((previous) => ({
+			...(previous ?? DEFAULT_SETTINGS),
+			onboardingCompleted: true,
+		}));
+		void saveSettings({ onboardingCompleted: true });
+
+		requestAnimationFrame(() => {
+			requestAnimationFrame(hideSplashAfterBoot);
+		});
+	}, [hideSplashAfterBoot]);
+
 	useEffect(() => {
 		const minDelay = new Promise<void>((r) => setTimeout(r, 1000));
 		void Promise.all([loadSettings().then(setAppSettings), minDelay]).then(
@@ -259,13 +269,17 @@ function MainApp() {
 					});
 				}}
 			>
-				<AppShell
-					onOpenSettings={(workspaceId, workspaceRepoId) => {
-						setSettingsWorkspaceId(workspaceId);
-						setSettingsWorkspaceRepoId(workspaceRepoId);
-						setSettingsOpen(true);
-					}}
-				/>
+				{appSettings === null ? null : !appSettings.onboardingCompleted ? (
+					<AppOnboarding onComplete={completeOnboarding} />
+				) : (
+					<AppShell
+						onOpenSettings={(workspaceId, workspaceRepoId) => {
+							setSettingsWorkspaceId(workspaceId);
+							setSettingsWorkspaceRepoId(workspaceRepoId);
+							setSettingsOpen(true);
+						}}
+					/>
+				)}
 				{splashMounted && <SplashScreen visible={splashVisible} />}
 				<SettingsDialog
 					open={settingsOpen}
@@ -389,13 +403,6 @@ function AppShell({
 		sidebarWidth,
 		setSidebarCollapsed,
 	} = useShellPanels();
-	const [showOnboarding, setShowOnboarding] = useState(false);
-	const [onboardingPending, setOnboardingPending] = useState(false);
-	const [conductorWorkspaces, setConductorWorkspaces] = useState<
-		ConductorWorkspace[]
-	>([]);
-	const [isLoadingConductorWorkspaces, setIsLoadingConductorWorkspaces] =
-		useState(false);
 	const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
 		null,
 	);
@@ -574,21 +581,6 @@ function AppShell({
 		workspaceReselectTick,
 	]);
 
-	useEffect(() => {
-		if (!showOnboarding) return;
-
-		setIsLoadingConductorWorkspaces(true);
-		listConductorRepos()
-			.then(async (repos) => {
-				const all = await Promise.all(
-					repos.map((repo) => listConductorWorkspaces(repo.id)),
-				);
-				setConductorWorkspaces(all.flat());
-			})
-			.catch(() => setConductorWorkspaces([]))
-			.finally(() => setIsLoadingConductorWorkspaces(false));
-	}, [showOnboarding]);
-
 	const { settings: appSettings } = useSettings();
 	useAppUpdater();
 	useDockUnreadBadge();
@@ -603,21 +595,6 @@ function AppShell({
 		installedEditors.find((e) => e.id === preferredEditorId) ??
 		installedEditors[0] ??
 		null;
-
-	// Show onboarding before the main shell paints so the app does not flash first.
-	useLayoutEffect(() => {
-		if (!isIdentityConnected) return;
-		const key = "helmor_onboarding_completed";
-		if (localStorage.getItem(key)) return;
-
-		setOnboardingPending(true);
-		isConductorAvailable()
-			.then((available) => {
-				if (available) setShowOnboarding(true);
-				setOnboardingPending(false);
-			})
-			.catch(() => setOnboardingPending(false));
-	}, [isIdentityConnected]);
 
 	const navigationGroupsQuery = useQuery({
 		...workspaceGroupsQueryOptions(),
@@ -1960,29 +1937,6 @@ function AppShell({
 							aria-label="Application shell"
 							className="relative h-screen overflow-hidden bg-background font-sans text-foreground antialiased"
 						>
-							{onboardingPending && (
-								<div className="fixed inset-0 z-[60] bg-background" />
-							)}
-							{showOnboarding && (
-								<ConductorOnboarding
-									onComplete={() => {
-										localStorage.setItem("helmor_onboarding_completed", "1");
-										setShowOnboarding(false);
-										setConductorWorkspaces([]);
-										void queryClient.invalidateQueries({
-											queryKey: helmorQueryKeys.workspaceGroups,
-										});
-										void queryClient.invalidateQueries({
-											queryKey: helmorQueryKeys.archivedWorkspaces,
-										});
-										void queryClient.invalidateQueries({
-											queryKey: helmorQueryKeys.repositories,
-										});
-									}}
-									workspaces={conductorWorkspaces}
-									isLoadingWorkspaces={isLoadingConductorWorkspaces}
-								/>
-							)}
 							<div className="relative flex h-full min-h-0 bg-background">
 								{workspaceViewMode === "conversation" && (
 									<>

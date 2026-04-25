@@ -112,6 +112,10 @@ vi.mock("@tauri-apps/api/webview", () => ({
 vi.mock("@tauri-apps/api/core", () => ({
 	invoke: vi.fn(async (command: string) => {
 		switch (command) {
+			case "get_app_settings":
+				return {
+					"app.onboarding_completed": "true",
+				};
 			case "get_github_identity_session":
 				return {
 					status: "connected",

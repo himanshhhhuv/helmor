@@ -1,10 +1,21 @@
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+
 use anyhow::Context;
 use serde::Serialize;
-use tauri::Manager;
+use tauri::{LogicalSize, LogicalUnit, Manager, PixelUnit, Size, Window, WindowSizeConstraints};
 
 use crate::{agents, git_watcher, models::db, service, sidecar};
 
 use super::common::{run_blocking, CmdResult};
+
+// Best-fit fixed window size for the current onboarding motion layout.
+// Resizing is restored when onboarding exits.
+const ONBOARDING_WINDOW_WIDTH: f64 = 1300.0;
+const ONBOARDING_WINDOW_HEIGHT: f64 = 810.0;
+
+static ONBOARDING_WINDOW_STATE: LazyLock<Mutex<HashMap<String, bool>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -206,6 +217,138 @@ pub async fn install_cli() -> CmdResult<CliStatus> {
         Ok(cli_status_for_paths(&install_path, &cli_binary))
     })
     .await
+}
+
+#[tauri::command]
+pub fn enter_onboarding_window_mode(window: Window) -> CmdResult<()> {
+    let label = window.label().to_string();
+    let was_resizable = window
+        .is_resizable()
+        .context("Failed to read window resizable state")?;
+    ONBOARDING_WINDOW_STATE
+        .lock()
+        .expect("onboarding window state mutex poisoned")
+        .entry(label)
+        .or_insert(was_resizable);
+
+    let size = onboarding_window_size();
+    window
+        .set_size(size)
+        .context("Failed to set onboarding window size")?;
+    window
+        .center()
+        .context("Failed to center onboarding window")?;
+    window
+        .set_min_size(Some(size))
+        .context("Failed to set onboarding minimum window size")?;
+    window
+        .set_max_size(Some(size))
+        .context("Failed to set onboarding maximum window size")?;
+    window
+        .set_size_constraints(onboarding_window_constraints())
+        .context("Failed to set onboarding window size constraints")?;
+    window
+        .set_resizable(false)
+        .context("Failed to disable onboarding window resizing")?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn exit_onboarding_window_mode(window: Window) -> CmdResult<()> {
+    let label = window.label().to_string();
+    let restore_resizable = ONBOARDING_WINDOW_STATE
+        .lock()
+        .expect("onboarding window state mutex poisoned")
+        .remove(&label)
+        .unwrap_or(true);
+
+    window
+        .set_size_constraints(WindowSizeConstraints::default())
+        .context("Failed to clear onboarding window size constraints")?;
+    window
+        .set_min_size(None::<Size>)
+        .context("Failed to clear onboarding minimum window size")?;
+    window
+        .set_max_size(None::<Size>)
+        .context("Failed to clear onboarding maximum window size")?;
+    window
+        .set_resizable(restore_resizable)
+        .context("Failed to restore window resizing")?;
+
+    Ok(())
+}
+
+fn onboarding_window_size() -> Size {
+    Size::Logical(LogicalSize {
+        width: ONBOARDING_WINDOW_WIDTH,
+        height: ONBOARDING_WINDOW_HEIGHT,
+    })
+}
+
+fn onboarding_window_constraints() -> WindowSizeConstraints {
+    WindowSizeConstraints {
+        min_width: Some(PixelUnit::Logical(LogicalUnit::new(
+            ONBOARDING_WINDOW_WIDTH,
+        ))),
+        min_height: Some(PixelUnit::Logical(LogicalUnit::new(
+            ONBOARDING_WINDOW_HEIGHT,
+        ))),
+        max_width: Some(PixelUnit::Logical(LogicalUnit::new(
+            ONBOARDING_WINDOW_WIDTH,
+        ))),
+        max_height: Some(PixelUnit::Logical(LogicalUnit::new(
+            ONBOARDING_WINDOW_HEIGHT,
+        ))),
+    }
+}
+
+#[tauri::command]
+pub async fn open_agent_login_terminal(provider: String) -> CmdResult<()> {
+    run_blocking(move || open_agent_login_terminal_impl(&provider)).await
+}
+
+fn agent_login_command(provider: &str) -> anyhow::Result<&'static str> {
+    match provider {
+        "claude" => Ok("claude login"),
+        "codex" => Ok("codex login"),
+        _ => anyhow::bail!("Unknown agent provider: {provider}"),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn open_agent_login_terminal_impl(provider: &str) -> anyhow::Result<()> {
+    let command = agent_login_command(provider)?;
+    let script_command = applescript_string(command);
+    let output = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg("tell application \"Terminal\" to activate")
+        .arg("-e")
+        .arg(format!(
+            "tell application \"Terminal\" to do script {script_command}"
+        ))
+        .output()
+        .context("Failed to open Terminal for agent login")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Terminal login command failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn open_agent_login_terminal_impl(provider: &str) -> anyhow::Result<()> {
+    let _ = agent_login_command(provider)?;
+    anyhow::bail!("Opening agent login in a terminal is currently supported on macOS only.")
+}
+
+#[cfg(target_os = "macos")]
+fn applescript_string(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 #[tauri::command]
