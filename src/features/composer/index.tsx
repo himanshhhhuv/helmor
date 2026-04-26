@@ -764,8 +764,8 @@ export const WorkspaceComposer = memo(function WorkspaceComposer({
 										className={cn(
 											`gap-1 px-1.5 text-[11px] ${composerToolbarTriggerClassName}`,
 											permissionMode === "plan"
-												? "text-plan hover:bg-accent/60 hover:text-plan"
-												: "text-muted-foreground opacity-55",
+												? "text-plan hover:text-plan"
+												: "text-muted-foreground/55 hover:text-muted-foreground/55",
 										)}
 										onClick={() =>
 											onChangePermissionMode(
