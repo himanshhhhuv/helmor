@@ -338,6 +338,12 @@ pub fn run() {
             api.prevent_exit();
             emit_quit_requested(app_handle);
         }
+        // Install pending update on the way out so the next launch is the
+        // new version. By this point `request_quit` has stopped watchers
+        // and torn down the sidecar, so blocking briefly here is safe.
+        tauri::RunEvent::Exit => {
+            updater::install_pending_on_exit_blocking();
+        }
         _ => {}
     });
 }

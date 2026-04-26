@@ -39,6 +39,43 @@ function formatStatusDescription(status: AppUpdateStatus): string {
 	}
 }
 
+function formatBytes(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DownloadProgressBar({ status }: { status: AppUpdateStatus }) {
+	if (status.stage !== "downloading") return null;
+	const progress = status.progress;
+	const downloaded = progress?.downloaded ?? 0;
+	const total = progress?.total ?? null;
+	const hasTotal = typeof total === "number" && total > 0;
+	const percent = hasTotal
+		? Math.min(100, Math.round((downloaded / total) * 100))
+		: null;
+
+	return (
+		<div className="mt-2 max-w-[280px]">
+			<div className="h-1 w-full overflow-hidden rounded-full bg-muted/40">
+				{percent !== null ? (
+					<div
+						className="h-full bg-foreground/70 transition-[width] duration-200 ease-out"
+						style={{ width: `${percent}%` }}
+					/>
+				) : (
+					<div className="h-full w-1/3 animate-pulse bg-foreground/50" />
+				)}
+			</div>
+			<div className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+				{hasTotal
+					? `${formatBytes(downloaded)} / ${formatBytes(total)} · ${percent}%`
+					: formatBytes(downloaded)}
+			</div>
+		</div>
+	);
+}
+
 export function AppUpdatesPanel() {
 	const [status, setStatus] = useState<AppUpdateStatus | null>(null);
 	const [checking, setChecking] = useState(false);
@@ -64,6 +101,22 @@ export function AppUpdatesPanel() {
 		};
 	}, []);
 
+	const stage = status?.stage;
+	const isAutoChecking = stage === "checking";
+	const isDownloading = stage === "downloading";
+	const isInstallingStage = stage === "installing";
+	const checkBusy = checking || isAutoChecking;
+	const installBusy = installing || isInstallingStage;
+	const anyBusy = checkBusy || isDownloading || installBusy;
+
+	const checkLabel = isDownloading
+		? "Downloading"
+		: installBusy
+			? "Installing"
+			: checkBusy
+				? "Checking"
+				: "Check now";
+
 	return (
 		<SettingsRow
 			align="start"
@@ -77,6 +130,7 @@ export function AppUpdatesPanel() {
 							{status.update.version}
 						</SettingsNotice>
 					) : null}
+					{status ? <DownloadProgressBar status={status} /> : null}
 				</>
 			}
 		>
@@ -101,14 +155,14 @@ export function AppUpdatesPanel() {
 							})
 							.finally(() => setChecking(false));
 					}}
-					disabled={checking || installing}
+					disabled={anyBusy}
 				>
-					{checking ? (
+					{anyBusy ? (
 						<Loader2 className="size-3.5 animate-spin" />
 					) : (
 						<RefreshCw className="size-3.5" />
 					)}
-					Check now
+					{checkLabel}
 				</Button>
 				{status?.stage === "downloaded" && (
 					<Button
@@ -127,7 +181,7 @@ export function AppUpdatesPanel() {
 								})
 								.finally(() => setInstalling(false));
 						}}
-						disabled={checking || installing}
+						disabled={anyBusy}
 					>
 						Update and restart
 					</Button>

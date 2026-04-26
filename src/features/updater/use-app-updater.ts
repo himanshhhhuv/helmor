@@ -57,7 +57,7 @@ function showDownloadedUpdateToast(
 			},
 			"View change log",
 		),
-		duration: Number.POSITIVE_INFINITY,
+		duration: 8000,
 	});
 }
 

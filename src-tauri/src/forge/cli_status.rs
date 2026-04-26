@@ -400,9 +400,9 @@ mod tests {
     #[test]
     fn parse_glab_login_extracts_username_from_decorated_line() {
         let stderr = concat!(
-            "ngit.hundun.cn\n",
-            "  ✓ Logged in to ngit.hundun.cn as liangeqiang (/Users/liangeqiang/.config/glab-cli/config.yml)\n",
-            "  ✓ Git operations for ngit.hundun.cn configured to use https protocol.\n",
+            "example.cn\n",
+            "  ✓ Logged in to example.cn as liangeqiang (/Users/liangeqiang/.config/glab-cli/config.yml)\n",
+            "  ✓ Git operations for example.cn configured to use https protocol.\n",
             "  ✓ Token found: ********\n",
         );
         assert_eq!(parse_glab_login(stderr), Some("liangeqiang".to_string()),);
@@ -439,7 +439,7 @@ mod tests {
 
     #[test]
     fn looks_like_glab_unauthenticated_recognises_canonical_messages() {
-        let real_world = "X ngit.hundun.cn has not been authenticated with glab. Run `glab auth login --hostname ngit.hundun.cn` to authenticate.";
+        let real_world = "X example.cn has not been authenticated with glab. Run `glab auth login --hostname example.cn` to authenticate.";
         assert!(looks_like_glab_unauthenticated(real_world));
         assert!(looks_like_glab_unauthenticated("401 Unauthorized"));
         assert!(looks_like_glab_unauthenticated("No token found"));

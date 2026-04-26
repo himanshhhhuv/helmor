@@ -462,6 +462,11 @@ export type AppUpdateInfo = {
 	releaseUrl: string;
 };
 
+export type AppUpdateProgress = {
+	downloaded: number;
+	total?: number | null;
+};
+
 export type AppUpdateStatus = {
 	stage: AppUpdateStage;
 	configured: boolean;
@@ -470,6 +475,7 @@ export type AppUpdateStatus = {
 	lastError?: string | null;
 	lastAttemptAt?: string | null;
 	downloadedAt?: string | null;
+	progress?: AppUpdateProgress | null;
 };
 
 const DEFAULT_WORKSPACE_GROUPS: WorkspaceGroup[] = [
