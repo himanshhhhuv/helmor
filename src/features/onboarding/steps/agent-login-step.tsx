@@ -16,12 +16,12 @@ export function AgentLoginStep({
 		<section
 			aria-label="Agent login"
 			aria-hidden={step !== "agents"}
-			className={`absolute inset-x-0 bottom-8 z-20 flex h-[54vh] flex-col items-center px-8 pb-12 pt-8 transition-all duration-1000 ease-[cubic-bezier(.22,.82,.2,1)] ${
+			className={`absolute inset-x-0 top-[calc(50vh-40px)] z-20 flex origin-top flex-col items-center px-8 pb-12 pt-8 transition-transform duration-1000 ease-[cubic-bezier(.22,.82,.2,1)] ${
 				step === "corner"
 					? "pointer-events-none -translate-x-[50vw] translate-y-[126vh] opacity-100"
 					: step === "agents"
-						? "translate-y-0 opacity-100"
-						: "translate-y-10 opacity-0 pointer-events-none"
+						? "translate-x-0 translate-y-0 scale-100 opacity-100"
+						: "pointer-events-none translate-x-[22vw] translate-y-[64vh] scale-[0.7] opacity-100"
 			}`}
 		>
 			<div className="w-full max-w-[720px]">

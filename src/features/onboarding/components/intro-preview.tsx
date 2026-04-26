@@ -16,7 +16,7 @@ export function IntroPreview({
 			aria-hidden={step !== "intro"}
 			className={`relative z-10 grid h-full items-center gap-12 px-14 pt-10 pb-12 transition-[grid-template-columns] duration-700 ease-[cubic-bezier(.22,.82,.2,1)] max-lg:grid-cols-1 max-lg:content-center max-lg:gap-8 max-lg:px-8 ${
 				step === "intro"
-					? "grid-cols-[minmax(320px,0.72fr)_minmax(540px,1.28fr)]"
+					? "grid-cols-[minmax(280px,0.6fr)_minmax(580px,1.4fr)]"
 					: "grid-cols-[minmax(360px,0.84fr)_minmax(460px,1.16fr)]"
 			}`}
 		>
@@ -27,26 +27,21 @@ export function IntroPreview({
 					src={helmorLogoSrc}
 					alt="Helmor"
 					draggable={false}
-					className="size-16 rounded-[11px] opacity-95"
+					className="size-14 rounded-[10px] opacity-95"
 				/>
-				<h1 className="mt-8 text-5xl font-semibold leading-[1.1] tracking-normal max-lg:text-4xl">
-					<span className="block text-muted-foreground">AI made</span>
-					<span className="block text-muted-foreground">coding faster.</span>
-					<span className="mt-4 block text-foreground">Helmor is about</span>
-					<span className="block text-foreground">finishing the</span>
-					<span className="block text-foreground">rest of the loop.</span>
+				<h1 className="mt-7 text-[2.625rem] font-semibold leading-[1.1] tracking-normal text-foreground max-lg:text-3xl">
+					Hi, Helmor!
 				</h1>
-				<p className="mt-10 max-w-md text-base leading-7 text-muted-foreground">
-					An open-source local workbench for multi-agent software development.
-					Built for orchestration, review, testing, merge, and everything around
-					the code.
+				<p className="mt-9 max-w-md text-sm leading-6 text-muted-foreground">
+					AI generates the code. Helmor is where you orchestrate, review, and
+					ship it.
 				</p>
 
 				<Button
 					type="button"
 					size="lg"
 					onClick={onNext}
-					className="mt-8 h-11 gap-2 px-4 text-[0.95rem]"
+					className="mt-7 h-10 gap-2 px-3.5 text-[0.875rem]"
 				>
 					Next
 					<ArrowRight data-icon="inline-end" className="size-4" />
@@ -55,9 +50,9 @@ export function IntroPreview({
 
 			<section
 				aria-label="Helmor preview"
-				className={`relative flex min-h-[420px] min-w-0 items-center justify-center transition-transform duration-1000 ease-[cubic-bezier(.22,.82,.2,1)] max-lg:hidden ${
+				className={`relative flex min-h-[560px] min-w-0 items-center justify-center transition-transform duration-1000 ease-[cubic-bezier(.22,.82,.2,1)] max-lg:hidden ${
 					step === "skills"
-						? "translate-x-[32vw] translate-y-[2vh]"
+						? "translate-x-[28vw] translate-y-0"
 						: step === "repoImport"
 							? "translate-x-[28vw] translate-y-0"
 							: step === "completeTransition"
@@ -82,11 +77,11 @@ export function IntroPreview({
 				<div
 					className={`relative w-full max-w-[760px] overflow-hidden rounded-lg border border-border/70 bg-card shadow-2xl shadow-black/35 transition-transform duration-1000 ease-[cubic-bezier(.22,.82,.2,1)] ${
 						step === "intro"
-							? "scale-100"
+							? "scale-[1.05]"
 							: step === "skills"
-								? "scale-[1.72]"
+								? "scale-[1.64]"
 								: step === "repoImport"
-									? "scale-[1.4]"
+									? "scale-[1.64]"
 									: step === "completeTransition"
 										? "scale-[1.95]"
 										: step === "conductorTransition"
