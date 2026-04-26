@@ -129,10 +129,10 @@ pub fn run() {
             // can find developer tools without manual PATH hacks.
             shell_env::inherit_login_shell_env();
 
-            // Expose bundled gh / glab paths via env vars so forge CLI calls
-            // and the AppleScript-driven terminal use Helmor's bundled
-            // binaries, not whatever the user has on PATH.
-            forge::install_bundled_env();
+            // Resolve bundled gh / glab paths once; forge CLI calls and the
+            // AppleScript terminal helper read from this cache so behavior
+            // doesn't depend on the user's PATH.
+            forge::init_bundled_cli_paths();
 
             updater::configure()?;
             updater::spawn_startup_check(app.handle().clone());
@@ -200,7 +200,6 @@ pub fn run() {
             commands::github_commands::get_github_identity_session,
             commands::forge_commands::get_workspace_forge,
             commands::forge_commands::get_forge_cli_status,
-            commands::forge_commands::install_forge_cli,
             commands::forge_commands::open_forge_cli_auth_terminal,
             commands::forge_commands::refresh_workspace_change_request,
             commands::forge_commands::get_workspace_forge_action_status,

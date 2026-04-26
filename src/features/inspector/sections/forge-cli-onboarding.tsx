@@ -205,7 +205,6 @@ function ForgeDetectionTooltipBody({
 	const cliStatus = detection.cli;
 	const showConnectCopy =
 		cliStatus?.status === "unauthenticated" ||
-		cliStatus?.status === "missing" ||
 		authRequired === true ||
 		!cliStatus;
 

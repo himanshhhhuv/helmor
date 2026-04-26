@@ -1,9 +1,13 @@
 //! Resolves paths to bundled forge CLIs (`gh`, `glab`) shipped inside the
-//! `.app` bundle's `Resources/vendor/` tree, and exposes them via env vars
-//! so subprocess spawns and AppleScript-driven terminals both pick them up
-//! instead of relying on the user's PATH.
+//! `.app` bundle's `Resources/vendor/` tree.
+//!
+//! Paths are resolved once at app startup (`init`) and cached in a
+//! `OnceLock`, so subsequent lookups never touch the filesystem and never
+//! mutate `std::env`. Tests / dev can still override via the
+//! `HELMOR_GH_BIN_PATH` / `HELMOR_GLAB_BIN_PATH` env vars.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 pub const GH_PATH_ENV: &str = "HELMOR_GH_BIN_PATH";
 pub const GLAB_PATH_ENV: &str = "HELMOR_GLAB_BIN_PATH";
@@ -14,14 +18,60 @@ pub struct BundledForgeCliPaths {
     pub glab: Option<PathBuf>,
 }
 
-pub fn resolve_bundled_paths() -> BundledForgeCliPaths {
+static BUNDLED_PATHS: OnceLock<BundledForgeCliPaths> = OnceLock::new();
+
+/// Resolve bundled paths from the running executable's location and stash
+/// them in the global `OnceLock`. Idempotent — safe to call from the Tauri
+/// setup hook. Subsequent calls are a no-op.
+pub fn init() {
+    let _ = BUNDLED_PATHS.set(resolve_from_running_exe());
+    let paths = BUNDLED_PATHS.get();
+    tracing::info!(
+        gh = ?paths.and_then(|p| p.gh.as_deref()),
+        glab = ?paths.and_then(|p| p.glab.as_deref()),
+        "Resolved bundled forge CLI paths"
+    );
+}
+
+/// Returns the absolute bundled path for a forge CLI program name, if one
+/// is available. Order:
+///   1. Explicit env var override (`HELMOR_GH_BIN_PATH` / `HELMOR_GLAB_BIN_PATH`)
+///      — used by tests and ad-hoc dev builds.
+///   2. The path resolved at startup by `init`.
+///   3. `None` (caller falls back to PATH).
+pub fn bundled_path_for(program: &str) -> Option<PathBuf> {
+    if let Some(env_key) = env_key_for(program) {
+        if let Ok(raw) = std::env::var(env_key) {
+            let path = PathBuf::from(raw);
+            if path.is_file() {
+                return Some(path);
+            }
+        }
+    }
+    let cached = BUNDLED_PATHS.get()?;
+    match program {
+        "gh" => cached.gh.clone(),
+        "glab" => cached.glab.clone(),
+        _ => None,
+    }
+}
+
+fn env_key_for(program: &str) -> Option<&'static str> {
+    match program {
+        "gh" => Some(GH_PATH_ENV),
+        "glab" => Some(GLAB_PATH_ENV),
+        _ => None,
+    }
+}
+
+fn resolve_from_running_exe() -> BundledForgeCliPaths {
     std::env::current_exe()
         .ok()
-        .and_then(|exe| resolve_bundled_paths_for_exe(&exe))
+        .and_then(|exe| resolve_for_exe(&exe))
         .unwrap_or_default()
 }
 
-fn resolve_bundled_paths_for_exe(exe: &Path) -> Option<BundledForgeCliPaths> {
+fn resolve_for_exe(exe: &Path) -> Option<BundledForgeCliPaths> {
     let exe_dir = exe.parent()?;
     let contents_dir = exe_dir.parent()?;
     let resources_dir = contents_dir.join("Resources");
@@ -38,36 +88,6 @@ fn resolve_bundled_paths_for_exe(exe: &Path) -> Option<BundledForgeCliPaths> {
     })
 }
 
-/// Set HELMOR_*_BIN_PATH env vars so `run_command` and the AppleScript
-/// terminal helper can find the bundled binaries. Called once at startup.
-pub fn install_bundled_env() {
-    let paths = resolve_bundled_paths();
-    if let Some(gh) = &paths.gh {
-        std::env::set_var(GH_PATH_ENV, gh);
-    }
-    if let Some(glab) = &paths.glab {
-        std::env::set_var(GLAB_PATH_ENV, glab);
-    }
-    tracing::info!(
-        gh = ?paths.gh,
-        glab = ?paths.glab,
-        "Resolved bundled forge CLI paths"
-    );
-}
-
-/// Returns the absolute bundled path for a forge CLI program name, if one
-/// is available. Reads from env vars so dev/test overrides work.
-pub fn bundled_path_for(program: &str) -> Option<PathBuf> {
-    let env_key = match program {
-        "gh" => GH_PATH_ENV,
-        "glab" => GLAB_PATH_ENV,
-        _ => return None,
-    };
-    let raw = std::env::var(env_key).ok()?;
-    let path = PathBuf::from(raw);
-    path.is_file().then_some(path)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,7 +102,7 @@ mod tests {
         std::fs::write(vendor.join("gh/gh"), "").unwrap();
         std::fs::write(vendor.join("glab/glab"), "").unwrap();
 
-        let paths = resolve_bundled_paths_for_exe(&exe).unwrap();
+        let paths = resolve_for_exe(&exe).unwrap();
 
         assert_eq!(
             paths.gh.unwrap(),
@@ -100,7 +120,7 @@ mod tests {
     fn resolve_returns_none_when_binaries_missing() {
         let root = tempfile::tempdir().unwrap();
         let exe = root.path().join("Helmor.app/Contents/MacOS/Helmor");
-        let paths = resolve_bundled_paths_for_exe(&exe).unwrap();
+        let paths = resolve_for_exe(&exe).unwrap();
         assert!(paths.gh.is_none());
         assert!(paths.glab.is_none());
     }

@@ -1,8 +1,9 @@
-//! Forge CLI status + install plumbing.
+//! Forge CLI status plumbing.
 //!
-//! Probes the user's local `gh` / `glab` installation to tell the UI
-//! whether each CLI is Ready / Unauthenticated / Missing / Error, and
-//! also owns the one-click `install_forge_cli` path.
+//! Probes the bundled `gh` / `glab` to tell the UI whether each CLI is
+//! Ready / Unauthenticated / Error, and the AppleScript-driven Connect
+//! flow that opens a terminal pre-filled with `gh auth login` /
+//! `glab auth login`.
 
 use anyhow::{bail, Context, Result};
 use std::time::Duration;
@@ -29,13 +30,6 @@ pub fn get_forge_cli_status(provider: ForgeProvider, host: Option<&str>) -> Resu
     }
 }
 
-/// `gh` and `glab` ship inside the app bundle. There is nothing to install
-/// at runtime — Helmor refreshes the status instead so the UI can reflect
-/// any auth completed since the last probe.
-pub fn install_forge_cli(provider: ForgeProvider) -> Result<ForgeCliStatus> {
-    get_forge_cli_status(provider, None)
-}
-
 pub fn open_forge_cli_auth_terminal(provider: ForgeProvider, host: Option<&str>) -> Result<()> {
     let command = match provider {
         ForgeProvider::Github => format!("{} auth login", bundled_program_token("gh")),
@@ -56,9 +50,27 @@ pub fn open_forge_cli_auth_terminal(provider: ForgeProvider, host: Option<&str>)
 /// bare program name in dev / when no bundle is available.
 fn bundled_program_token(program: &str) -> String {
     match bundled::bundled_path_for(program) {
-        Some(path) => format!("'{}'", path.display()),
+        Some(path) => shell_single_quote(&path.display().to_string()),
         None => program.to_string(),
     }
+}
+
+/// Wrap a value in single quotes safe for /bin/sh, handling embedded
+/// single quotes by closing-quote / escaped-quote / re-opening-quote
+/// (the standard `'foo'\''bar'` trick). Required because user paths can
+/// legitimately contain `'` (e.g. `/Applications/Tom's Stuff/Helmor.app`).
+fn shell_single_quote(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('\'');
+    for ch in value.chars() {
+        if ch == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
 }
 
 pub(crate) fn labels_for(provider: ForgeProvider) -> ForgeLabels {
@@ -68,7 +80,6 @@ pub(crate) fn labels_for(provider: ForgeProvider) -> ForgeLabels {
             cli_name: "gh".to_string(),
             change_request_name: "PR".to_string(),
             change_request_full_name: "pull request".to_string(),
-            install_action: "Install gh".to_string(),
             connect_action: "Connect GitHub".to_string(),
         },
         ForgeProvider::Gitlab => ForgeLabels {
@@ -76,7 +87,6 @@ pub(crate) fn labels_for(provider: ForgeProvider) -> ForgeLabels {
             cli_name: "glab".to_string(),
             change_request_name: "MR".to_string(),
             change_request_full_name: "merge request".to_string(),
-            install_action: "Install glab".to_string(),
             connect_action: "Connect GitLab".to_string(),
         },
         ForgeProvider::Unknown => ForgeLabels {
@@ -84,7 +94,6 @@ pub(crate) fn labels_for(provider: ForgeProvider) -> ForgeLabels {
             cli_name: String::new(),
             change_request_name: "change request".to_string(),
             change_request_full_name: "change request".to_string(),
-            install_action: String::new(),
             connect_action: String::new(),
         },
     }
@@ -324,5 +333,15 @@ mod tests {
             ),
             "cold-start path must not create a second command window"
         );
+    }
+
+    #[test]
+    fn shell_single_quote_handles_embedded_single_quotes() {
+        assert_eq!(shell_single_quote("/usr/bin/gh"), "'/usr/bin/gh'");
+        assert_eq!(
+            shell_single_quote("/Apps/Tom's Stuff/Helmor.app/Contents/Resources/vendor/gh/gh"),
+            "'/Apps/Tom'\\''s Stuff/Helmor.app/Contents/Resources/vendor/gh/gh'"
+        );
+        assert_eq!(shell_single_quote("a'b'c"), "'a'\\''b'\\''c'");
     }
 }

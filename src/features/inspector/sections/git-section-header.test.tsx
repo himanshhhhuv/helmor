@@ -7,7 +7,6 @@ import { GitSectionHeader } from "./git-section-header";
 
 const apiMocks = vi.hoisted(() => ({
 	getWorkspaceForge: vi.fn(),
-	installForgeCli: vi.fn(),
 	openForgeCliAuthTerminal: vi.fn(),
 }));
 
@@ -17,7 +16,6 @@ vi.mock("@/lib/api", async (importOriginal) => {
 	return {
 		...actual,
 		getWorkspaceForge: apiMocks.getWorkspaceForge,
-		installForgeCli: apiMocks.installForgeCli,
 		openForgeCliAuthTerminal: apiMocks.openForgeCliAuthTerminal,
 	};
 });
@@ -42,16 +40,16 @@ function gitlabDetection(patch: Partial<ForgeDetection> = {}): ForgeDetection {
 			cliName: "glab",
 			changeRequestName: "MR",
 			changeRequestFullName: "merge request",
-			installAction: "Install glab",
 			connectAction: "Connect GitLab",
 		},
 		cli: {
-			status: "missing",
+			status: "unauthenticated",
 			provider: "gitlab",
 			host: "gitlab.com",
 			cliName: "glab",
-			message: "glab is not installed.",
-			installCommand: "brew install glab",
+			version: "1.50.0",
+			message: "Run `glab auth login --hostname gitlab.com`.",
+			loginCommand: "glab auth login --hostname gitlab.com",
 		},
 		detectionSignals: [],
 		...patch,
@@ -70,16 +68,16 @@ function githubDetection(patch: Partial<ForgeDetection> = {}): ForgeDetection {
 			cliName: "gh",
 			changeRequestName: "PR",
 			changeRequestFullName: "pull request",
-			installAction: "Install gh",
 			connectAction: "Connect GitHub",
 		},
 		cli: {
-			status: "missing",
+			status: "unauthenticated",
 			provider: "github",
 			host: "github.com",
 			cliName: "gh",
-			message: "GitHub CLI is not installed.",
-			installCommand: "brew install gh",
+			version: "2.65.0",
+			message: "Run `gh auth login`.",
+			loginCommand: "gh auth login",
 		},
 		detectionSignals: [],
 		...patch,
@@ -95,9 +93,7 @@ function expectElementBefore(first: Element, second: Element) {
 describe("GitSectionHeader forge onboarding", () => {
 	beforeEach(() => {
 		apiMocks.getWorkspaceForge.mockReset();
-		apiMocks.installForgeCli.mockReset();
 		apiMocks.openForgeCliAuthTerminal.mockReset();
-		apiMocks.installForgeCli.mockResolvedValue(null);
 		apiMocks.openForgeCliAuthTerminal.mockResolvedValue(undefined);
 	});
 

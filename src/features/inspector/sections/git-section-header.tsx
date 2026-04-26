@@ -89,7 +89,6 @@ export function GitSectionHeader({
 
 	const cliStatus = forgeDetection?.cli ?? null;
 	const cliNeedsAttention =
-		cliStatus?.status === "missing" ||
 		cliStatus?.status === "unauthenticated" ||
 		forgeRemoteState === "unauthenticated";
 	const showForgeOnboarding = cliNeedsAttention && forgeDetection !== null;

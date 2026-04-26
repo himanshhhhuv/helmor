@@ -35,9 +35,23 @@ const NODE_MODULES = join(SIDECAR_ROOT, "node_modules");
 const DIST_VENDOR = join(SIDECAR_ROOT, "dist", "vendor");
 const BUNDLE_CACHE = join(SIDECAR_ROOT, ".bundle-cache");
 
-// Pin upstream forge CLI versions. Bump these to upgrade.
+// Pin upstream forge CLI versions + SHA256 checksums. To upgrade:
+//   1. Bump GH_VERSION / GLAB_VERSION.
+//   2. Pull the new checksums from upstream and update the maps below.
+//      - gh:   curl -sfL https://github.com/cli/cli/releases/download/v$VER/gh_${VER}_checksums.txt
+//      - glab: curl -sfL https://gitlab.com/gitlab-org/cli/-/releases/v$VER/downloads/checksums.txt
+//   3. Wipe sidecar/.bundle-cache to force re-download.
 const GH_VERSION = "2.65.0";
+const GH_SHA256 = {
+	arm64: "5acb7110fa6f18d2e1a7bea41526bb8532584f4a10067b40217488bf9f3ad9ab",
+	amd64: "0d33a2b5263304e9110051e3ec6b710b26f37cb10170031c1a79a81d2d9a871b",
+} as const;
+
 const GLAB_VERSION = "1.50.0";
+const GLAB_SHA256 = {
+	arm64: "271502866ffe333d8ac84e941edbc8bc346def5c012245867c1602bfac826aea",
+	amd64: "42e403c274d605fe5bfc606f18d6dd498ad741c6b5d2e6e79a557c384b176f5d",
+} as const;
 
 // ---------------------------------------------------------------------------
 // Platform detection — macOS only, arch varies (arm64 / x64)
@@ -147,13 +161,46 @@ function ensureCacheDir(): void {
 	mkdirSync(BUNDLE_CACHE, { recursive: true });
 }
 
-function downloadIfMissing(url: string, dest: string): void {
-	if (existsSync(dest)) return;
+function sha256OfFile(path: string): string {
+	const out = execFileSync("shasum", ["-a", "256", path], {
+		encoding: "utf8",
+	});
+	const digest = out.split(/\s+/)[0];
+	if (!digest) throw new Error(`[stage-vendor] empty shasum for ${path}`);
+	return digest;
+}
+
+function downloadAndVerify(
+	url: string,
+	dest: string,
+	expectedSha256: string,
+): void {
+	if (existsSync(dest)) {
+		const actual = sha256OfFile(dest);
+		if (actual === expectedSha256) return;
+		console.warn(
+			`[stage-vendor] cached ${dest} has wrong sha256 (got ${actual}); re-downloading`,
+		);
+		rmSync(dest, { force: true });
+	}
 	console.log(`[stage-vendor] downloading ${url}`);
 	mkdirSync(dirname(dest), { recursive: true });
 	execFileSync("curl", ["-fL", "--retry", "3", "-o", dest, url], {
 		stdio: "inherit",
 	});
+	const actual = sha256OfFile(dest);
+	if (actual !== expectedSha256) {
+		rmSync(dest, { force: true });
+		throw new Error(
+			`[stage-vendor] sha256 mismatch for ${url}\n  expected: ${expectedSha256}\n  actual:   ${actual}`,
+		);
+	}
+}
+
+// Wipe + recreate so a half-failed previous extract can never poison this run.
+function freshExtractDir(path: string): void {
+	rmSync(path, { recursive: true, force: true });
+	mkdirSync(path, { recursive: true });
 }
 
 function stageGhBinary(arch: "arm64" | "amd64"): string {
@@ -161,14 +208,15 @@ function stageGhBinary(arch: "arm64" | "amd64"): string {
 	const slug = `gh_${GH_VERSION}_macOS_${arch}`;
 	const archive = join(BUNDLE_CACHE, `${slug}.zip`);
 	const url = `https://github.com/cli/cli/releases/download/v${GH_VERSION}/${slug}.zip`;
-	downloadIfMissing(url, archive);
+	downloadAndVerify(url, archive, GH_SHA256[arch]);
 
+	// gh's zip wraps everything inside `${slug}/`, so unzip into BUNDLE_CACHE
+	// and let the wrapper directory land at BUNDLE_CACHE/${slug}.
 	const extractDir = join(BUNDLE_CACHE, slug);
-	if (!existsSync(extractDir)) {
-		execFileSync("unzip", ["-q", "-o", archive, "-d", BUNDLE_CACHE], {
-			stdio: "inherit",
-		});
-	}
+	rmSync(extractDir, { recursive: true, force: true });
+	execFileSync("unzip", ["-q", "-o", archive, "-d", BUNDLE_CACHE], {
+		stdio: "inherit",
+	});
 
 	const binSrc = join(extractDir, "bin", "gh");
 	if (!existsSync(binSrc)) {
@@ -185,21 +233,17 @@ function stageGhBinary(arch: "arm64" | "amd64"): string {
 
 function stageGlabBinary(arch: "arm64" | "amd64"): string {
 	ensureCacheDir();
-	const archive = join(
-		BUNDLE_CACHE,
-		`glab_${GLAB_VERSION}_macOS_${arch}.tar.gz`,
-	);
-	// glab darwin tarball name uses macOS_{arch}
-	const url = `https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_macOS_${arch}.tar.gz`;
-	downloadIfMissing(url, archive);
+	const slug = `glab_${GLAB_VERSION}_darwin_${arch}`;
+	const archive = join(BUNDLE_CACHE, `${slug}.tar.gz`);
+	const url = `https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/${slug}.tar.gz`;
+	downloadAndVerify(url, archive, GLAB_SHA256[arch]);
 
-	const extractDir = join(BUNDLE_CACHE, `glab_${GLAB_VERSION}_macOS_${arch}`);
-	if (!existsSync(extractDir)) {
-		mkdirSync(extractDir, { recursive: true });
-		execFileSync("tar", ["-xzf", archive, "-C", extractDir], {
-			stdio: "inherit",
-		});
-	}
+	// glab's tarball has no wrapper dir; bin/glab is at the archive root.
+	const extractDir = join(BUNDLE_CACHE, slug);
+	freshExtractDir(extractDir);
+	execFileSync("tar", ["-xzf", archive, "-C", extractDir], {
+		stdio: "inherit",
+	});
 
 	const binSrc = join(extractDir, "bin", "glab");
 	if (!existsSync(binSrc)) {
