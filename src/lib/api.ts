@@ -678,10 +678,69 @@ export async function exitOnboardingWindowMode(): Promise<void> {
 
 export type AgentLoginProvider = "claude" | "codex";
 
+export type AgentLoginStatusResult = {
+	claude: boolean;
+	codex: boolean;
+};
+
+export async function getAgentLoginStatus(): Promise<AgentLoginStatusResult> {
+	return await invoke<AgentLoginStatusResult>("get_agent_login_status");
+}
+
 export async function openAgentLoginTerminal(
 	provider: AgentLoginProvider,
 ): Promise<void> {
 	await invoke("open_agent_login_terminal", { provider });
+}
+
+export async function spawnAgentLoginTerminal(
+	provider: AgentLoginProvider,
+	instanceId: string,
+	onEvent: (event: ScriptEvent) => void,
+): Promise<void> {
+	const channel = new Channel<ScriptEvent>();
+	channel.onmessage = onEvent;
+	await invoke("spawn_agent_login_terminal", {
+		provider,
+		instanceId,
+		channel,
+	});
+}
+
+export async function stopAgentLoginTerminal(
+	provider: AgentLoginProvider,
+	instanceId: string,
+): Promise<boolean> {
+	return invoke<boolean>("stop_agent_login_terminal", {
+		provider,
+		instanceId,
+	});
+}
+
+export async function writeAgentLoginTerminalStdin(
+	provider: AgentLoginProvider,
+	instanceId: string,
+	data: string,
+): Promise<boolean> {
+	return invoke<boolean>("write_agent_login_terminal_stdin", {
+		provider,
+		instanceId,
+		data,
+	});
+}
+
+export async function resizeAgentLoginTerminal(
+	provider: AgentLoginProvider,
+	instanceId: string,
+	cols: number,
+	rows: number,
+): Promise<boolean> {
+	return invoke<boolean>("resize_agent_login_terminal", {
+		provider,
+		instanceId,
+		cols,
+		rows,
+	});
 }
 
 export type DevResetResult = {

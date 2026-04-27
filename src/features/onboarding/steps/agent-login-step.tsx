@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { AgentLoginProvider } from "@/lib/api";
 import { AgentStatusAction } from "../components/agent-status-action";
@@ -11,18 +11,46 @@ export function AgentLoginStep({
 	loginItems,
 	onBack,
 	onNext,
+	onRefreshLoginItems,
 }: {
 	step: OnboardingStep;
 	loginItems: AgentLoginItem[];
 	onBack: () => void;
 	onNext: () => void;
+	onRefreshLoginItems: () => void;
 }) {
 	const [primedLoginProvider, setPrimedLoginProvider] =
 		useState<AgentLoginProvider | null>(null);
 	const [activeLoginProvider, setActiveLoginProvider] =
 		useState<AgentLoginProvider | null>(null);
+	const [loginInstanceId, setLoginInstanceId] = useState<string | null>(null);
+	const [waitingProvider, setWaitingProvider] =
+		useState<AgentLoginProvider | null>(null);
 	const terminalProvider = activeLoginProvider ?? primedLoginProvider;
 	const terminalActive = activeLoginProvider !== null;
+
+	const startLogin = useCallback((provider: AgentLoginProvider) => {
+		setPrimedLoginProvider(provider);
+		setActiveLoginProvider(provider);
+		setWaitingProvider(provider);
+		setLoginInstanceId(crypto.randomUUID());
+	}, []);
+
+	const handleTerminalExit = useCallback(
+		(code: number | null) => {
+			onRefreshLoginItems();
+			if (code !== 0) {
+				setWaitingProvider((current) =>
+					current === activeLoginProvider ? null : current,
+				);
+			}
+		},
+		[activeLoginProvider, onRefreshLoginItems],
+	);
+
+	const handleTerminalError = useCallback(() => {
+		setWaitingProvider(null);
+	}, []);
 
 	return (
 		<section
@@ -73,8 +101,9 @@ export function AgentLoginStep({
 									<AgentStatusAction
 										provider={provider}
 										status={status}
+										waiting={waitingProvider === provider}
 										onPrimeLogin={setPrimedLoginProvider}
-										onStartLogin={setActiveLoginProvider}
+										onStartLogin={startLogin}
 									/>
 								</div>
 							),
@@ -106,7 +135,10 @@ export function AgentLoginStep({
 
 				<LoginTerminalPreview
 					provider={terminalProvider}
+					instanceId={loginInstanceId}
 					active={terminalActive}
+					onExit={handleTerminalExit}
+					onError={handleTerminalError}
 				/>
 			</div>
 		</section>

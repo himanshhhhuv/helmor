@@ -8,10 +8,11 @@ import {
 	cloneRepositoryFromUrl,
 	enterOnboardingWindowMode,
 	exitOnboardingWindowMode,
+	getAgentLoginStatus,
 	loadAddRepositoryDefaults,
 } from "@/lib/api";
 import { describeUnknownError } from "@/lib/workspace-helpers";
-import { checkAgentLoginItems } from "./agent-login-state";
+import { buildAgentLoginItems } from "./agent-login-state";
 import { IntroPreview } from "./components/intro-preview";
 import { AgentLoginStep } from "./steps/agent-login-step";
 import { RepoImportStep } from "./steps/repo-import-step";
@@ -26,7 +27,7 @@ type AppOnboardingProps = {
 
 export function AppOnboarding({ onComplete }: AppOnboardingProps) {
 	const [step, setStep] = useState<OnboardingStep>("intro");
-	const [loginItems, setLoginItems] = useState(() => checkAgentLoginItems());
+	const [loginItems, setLoginItems] = useState(() => buildAgentLoginItems());
 	const [isRoutingImport, setIsRoutingImport] = useState(false);
 	const [importedRepositories, setImportedRepositories] = useState<
 		ImportedRepository[]
@@ -42,8 +43,18 @@ export function AppOnboarding({ onComplete }: AppOnboardingProps) {
 	const [repoImportError, setRepoImportError] = useState<string | null>(null);
 
 	const refreshLoginItems = useCallback(() => {
-		setLoginItems(checkAgentLoginItems());
+		void getAgentLoginStatus()
+			.then((status) => {
+				setLoginItems(buildAgentLoginItems(status));
+			})
+			.catch(() => {
+				setLoginItems(buildAgentLoginItems());
+			});
 	}, []);
+
+	useEffect(() => {
+		refreshLoginItems();
+	}, [refreshLoginItems]);
 
 	useEffect(() => {
 		window.addEventListener("focus", refreshLoginItems);
@@ -218,6 +229,7 @@ export function AppOnboarding({ onComplete }: AppOnboardingProps) {
 				onNext={() => {
 					setStep("corner");
 				}}
+				onRefreshLoginItems={refreshLoginItems}
 			/>
 			<RepositoryCliStep
 				step={step}

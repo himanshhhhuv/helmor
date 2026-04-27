@@ -59,11 +59,16 @@ describe("RepositoryCliStep", () => {
 			<RepositoryCliStep step="corner" onBack={vi.fn()} onNext={vi.fn()} />,
 		);
 
-		const githubItem = screen.getByRole("group", { name: "GitHub CLI" });
+		const githubItem = await screen.findByRole("group", {
+			name: "GitHub CLI (octocat)",
+		});
 
 		await waitFor(() => {
 			expect(within(githubItem).getByText("Ready")).toBeInTheDocument();
 		});
+		expect(
+			within(githubItem).queryByText(/GitHub CLI ready as octocat/i),
+		).not.toBeInTheDocument();
 		expect(
 			within(githubItem).queryByRole("button", { name: "Set up" }),
 		).not.toBeInTheDocument();
@@ -92,6 +97,11 @@ describe("RepositoryCliStep", () => {
 				within(githubItem).getByRole("button", { name: "Set up" }),
 			).toBeEnabled();
 		});
+		expect(
+			within(githubItem).queryByText(
+				/Run `gh auth login` to connect GitHub CLI/i,
+			),
+		).not.toBeInTheDocument();
 
 		await user.click(
 			within(githubItem).getByRole("button", { name: "Set up" }),

@@ -1,11 +1,16 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
-import { type ITheme, Terminal } from "@xterm/xterm";
+import { type ILinkProvider, type ITheme, Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 
 type TerminalOutputProps = {
 	terminalRef?: React.RefObject<TerminalHandle | null>;
 	className?: string;
+	detectLinks?: boolean;
+	fontSize?: number;
+	lineHeight?: number;
+	padding?: string;
 	/**
 	 * Called when the user types (or pastes). The string is the raw bytes
 	 * xterm would send over a real PTY — e.g. a literal `\x03` for Ctrl+C,
@@ -35,6 +40,121 @@ export type TerminalHandle = {
 	 */
 	refit: () => void;
 };
+
+const URL_PATTERN = /https?:\/\/[^\s<>"'`]+/gi;
+const TRAILING_URL_PUNCTUATION = /[),.;:!?]+$/;
+
+function sanitizeHttpUrl(value: string): string | null {
+	const trimmed = value.replace(TRAILING_URL_PUNCTUATION, "");
+	try {
+		const url = new URL(trimmed);
+		if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+		return url.toString();
+	} catch {
+		return null;
+	}
+}
+
+function openHttpUrl(value: string) {
+	const url = sanitizeHttpUrl(value);
+	if (!url) return;
+	void openUrl(url);
+}
+
+function findLineForOffset(
+	lineOffsets: readonly number[],
+	lineTexts: readonly string[],
+	offset: number,
+): number | null {
+	for (let i = lineOffsets.length - 1; i >= 0; i--) {
+		if (offset >= lineOffsets[i]) {
+			const lineEnd = lineOffsets[i] + lineTexts[i].length;
+			return offset <= lineEnd ? i : null;
+		}
+	}
+	return null;
+}
+
+function createHttpLinkProvider(terminal: Terminal): ILinkProvider {
+	return {
+		provideLinks(bufferLineNumber, callback) {
+			const buffer = terminal.buffer.active;
+			let startLine = bufferLineNumber - 1;
+			while (startLine > 0 && buffer.getLine(startLine)?.isWrapped) {
+				startLine--;
+			}
+
+			let endLine = bufferLineNumber - 1;
+			while (
+				endLine + 1 < buffer.length &&
+				buffer.getLine(endLine + 1)?.isWrapped
+			) {
+				endLine++;
+			}
+
+			const lineTexts: string[] = [];
+			for (let y = startLine; y <= endLine; y++) {
+				lineTexts.push(buffer.getLine(y)?.translateToString(false) ?? "");
+			}
+
+			const lineOffsets: number[] = [];
+			let offset = 0;
+			for (const lineText of lineTexts) {
+				lineOffsets.push(offset);
+				offset += lineText.length;
+			}
+
+			const text = lineTexts.join("");
+			const links = [...text.matchAll(URL_PATTERN)]
+				.map((match) => {
+					const rawText = match[0];
+					const url = sanitizeHttpUrl(rawText);
+					if (!url || match.index === undefined) return null;
+
+					const startOffset = match.index;
+					const endOffset =
+						startOffset + rawText.replace(TRAILING_URL_PUNCTUATION, "").length;
+					const startRelativeLine = findLineForOffset(
+						lineOffsets,
+						lineTexts,
+						startOffset,
+					);
+					const endRelativeLine = findLineForOffset(
+						lineOffsets,
+						lineTexts,
+						Math.max(startOffset, endOffset - 1),
+					);
+					if (startRelativeLine === null || endRelativeLine === null) {
+						return null;
+					}
+
+					return {
+						range: {
+							start: {
+								x: startOffset - lineOffsets[startRelativeLine] + 1,
+								y: startLine + startRelativeLine + 1,
+							},
+							end: {
+								x: endOffset - lineOffsets[endRelativeLine] + 1,
+								y: startLine + endRelativeLine + 1,
+							},
+						},
+						text: url,
+						decorations: {
+							pointerCursor: true,
+							underline: true,
+						},
+						activate: (_event: MouseEvent, linkText: string) => {
+							openHttpUrl(linkText);
+						},
+					};
+				})
+				.filter((link) => link !== null);
+
+			callback(links.length > 0 ? links : undefined);
+		},
+	};
+}
 
 // Global suspend counter shared across every mounted TerminalOutput.
 //
@@ -111,6 +231,10 @@ function resolveTerminalTheme(): ITheme {
 export function TerminalOutput({
 	terminalRef,
 	className,
+	detectLinks = false,
+	fontSize = 12,
+	lineHeight = 1.3,
+	padding = "12px 2px 12px 12px",
 	onData,
 	onResize,
 }: TerminalOutputProps) {
@@ -134,17 +258,27 @@ export function TerminalOutput({
 			// stdin enabled — forward keystrokes via onData below.
 			disableStdin: false,
 			scrollback: 5000,
-			fontSize: 12,
+			fontSize,
 			fontFamily: "'GeistMono', 'SF Mono', Monaco, Menlo, monospace",
-			lineHeight: 1.3,
+			lineHeight,
 			theme: resolveTerminalTheme(),
 			cursorBlink: false,
 			cursorStyle: "bar",
 			cursorInactiveStyle: "none",
+			linkHandler: detectLinks
+				? {
+						activate: (_event, text) => {
+							openHttpUrl(text);
+						},
+					}
+				: null,
 		});
 
 		terminal.loadAddon(fit);
 		terminal.open(container);
+		const linkProviderDisposable = detectLinks
+			? terminal.registerLinkProvider(createHttpLinkProvider(terminal))
+			: null;
 
 		const runFit = () => {
 			requestAnimationFrame(() => {
@@ -222,6 +356,7 @@ export function TerminalOutput({
 		return () => {
 			dataSub.dispose();
 			resizeSub.dispose();
+			linkProviderDisposable?.dispose();
 			themeObserver.disconnect();
 			resizeObserver.disconnect();
 			terminalRefitListeners.delete(refitListener);
@@ -233,7 +368,7 @@ export function TerminalOutput({
 					null;
 			}
 		};
-	}, [terminalRef]);
+	}, [detectLinks, fontSize, lineHeight, terminalRef]);
 
 	return (
 		<div
@@ -241,7 +376,7 @@ export function TerminalOutput({
 			style={{
 				width: "100%",
 				height: "100%",
-				padding: "12px 2px 12px 12px",
+				padding,
 				backgroundColor: "var(--terminal-background)",
 			}}
 		>

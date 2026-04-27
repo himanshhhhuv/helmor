@@ -222,30 +222,14 @@ function RepositoryCliSetupItem({
 	]);
 
 	const ready = status?.status === "ready";
-	const message = status?.status === "ready" ? status.message : status?.message;
+	const readyLogin = ready ? status.login.trim() : "";
+	const displayLabel = readyLogin ? `${label} (${readyLogin})` : label;
 
 	return (
 		<SetupItem
 			icon={icon}
-			label={label}
-			description={
-				message ? (
-					<>
-						{description}
-						<span
-							className={
-								status?.status === "error"
-									? "mt-1 block text-destructive"
-									: "mt-1 block"
-							}
-						>
-							{message}
-						</span>
-					</>
-				) : (
-					description
-				)
-			}
+			label={displayLabel}
+			description={description}
 			actionLabel={checking ? "Checking" : connecting ? "Waiting" : "Set up"}
 			onAction={handleSetUp}
 			busy={checking || connecting}

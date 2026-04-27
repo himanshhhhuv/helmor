@@ -3,8 +3,12 @@ use std::sync::{LazyLock, Mutex};
 
 use anyhow::Context;
 use serde::Serialize;
-use tauri::{LogicalSize, LogicalUnit, Manager, PixelUnit, Size, Window, WindowSizeConstraints};
+use tauri::ipc::Channel;
+use tauri::{
+    LogicalSize, LogicalUnit, Manager, PixelUnit, Size, State, Window, WindowSizeConstraints,
+};
 
+use crate::workspace::scripts::{ScriptContext, ScriptEvent, ScriptProcessManager};
 use crate::{agents, git_watcher, models::db, service, sidecar};
 
 use super::common::{run_blocking, CmdResult};
@@ -31,6 +35,13 @@ pub struct DataInfo {
     pub data_mode: String,
     pub data_dir: String,
     pub db_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentLoginStatus {
+    pub claude: bool,
+    pub codex: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -308,12 +319,196 @@ pub async fn open_agent_login_terminal(provider: String) -> CmdResult<()> {
     run_blocking(move || open_agent_login_terminal_impl(&provider)).await
 }
 
+#[tauri::command]
+pub async fn get_agent_login_status() -> CmdResult<AgentLoginStatus> {
+    run_blocking(|| {
+        Ok(AgentLoginStatus {
+            claude: claude_login_ready(),
+            codex: codex_login_ready(),
+        })
+    })
+    .await
+}
+
+fn claude_login_ready() -> bool {
+    match std::process::Command::new("claude")
+        .args(["auth", "status"])
+        .output()
+    {
+        Ok(output) if output.status.success() => parse_claude_login_status(&output.stdout),
+        Ok(output) => {
+            tracing::debug!(
+                "Claude auth status failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+            false
+        }
+        Err(error) => {
+            tracing::debug!("Claude auth status unavailable: {error}");
+            false
+        }
+    }
+}
+
+fn codex_login_ready() -> bool {
+    match std::process::Command::new("codex")
+        .args(["login", "status"])
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            parse_codex_login_status(&format!("{stdout}\n{stderr}"))
+        }
+        Ok(output) => {
+            tracing::debug!(
+                "Codex login status failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+            false
+        }
+        Err(error) => {
+            tracing::debug!("Codex login status unavailable: {error}");
+            false
+        }
+    }
+}
+
+fn parse_claude_login_status(stdout: &[u8]) -> bool {
+    serde_json::from_slice::<serde_json::Value>(stdout)
+        .ok()
+        .and_then(|value| value.get("loggedIn").and_then(serde_json::Value::as_bool))
+        .unwrap_or(false)
+}
+
+fn parse_codex_login_status(output: &str) -> bool {
+    let normalized = output.to_ascii_lowercase();
+    normalized.contains("logged in") && !normalized.contains("not logged in")
+}
+
 fn agent_login_command(provider: &str) -> anyhow::Result<&'static str> {
     match provider {
-        "claude" => Ok("claude login"),
+        "claude" => Ok("claude auth login"),
         "codex" => Ok("codex login"),
         _ => anyhow::bail!("Unknown agent provider: {provider}"),
     }
+}
+
+fn agent_login_script_type(provider: &str, instance_id: &str) -> String {
+    format!("agent-login:{provider}:{instance_id}")
+}
+
+const AGENT_LOGIN_REPO_ID: &str = "__helmor_onboarding__";
+
+#[tauri::command]
+pub async fn spawn_agent_login_terminal(
+    manager: State<'_, ScriptProcessManager>,
+    provider: String,
+    instance_id: String,
+    channel: Channel<ScriptEvent>,
+) -> CmdResult<()> {
+    let command = agent_login_command(&provider)?.to_string();
+    let working_dir = std::env::var("HOME")
+        .ok()
+        .filter(|home| !home.trim().is_empty())
+        .or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .map(|path| path.display().to_string())
+        })
+        .unwrap_or_else(|| "/".to_string());
+    let context = ScriptContext {
+        root_path: working_dir.clone(),
+        workspace_path: None,
+        workspace_name: None,
+        default_branch: None,
+    };
+    let mgr = manager.inner().clone();
+    let script_type = agent_login_script_type(&provider, &instance_id);
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let key = (
+            AGENT_LOGIN_REPO_ID.to_string(),
+            script_type.clone(),
+            None::<String>,
+        );
+        let command_to_send = format!("{command}; exit\n");
+        let stdin_manager = mgr.clone();
+        std::thread::spawn(move || {
+            for _ in 0..80 {
+                match stdin_manager.write_stdin(&key, command_to_send.as_bytes()) {
+                    Ok(true) => return,
+                    Ok(false) => std::thread::sleep(std::time::Duration::from_millis(25)),
+                    Err(error) => {
+                        tracing::debug!("Agent login terminal stdin unavailable: {error}");
+                        return;
+                    }
+                }
+            }
+            tracing::debug!("Agent login terminal was not ready for initial command");
+        });
+
+        if let Err(error) = crate::workspace::scripts::run_terminal_session(
+            &mgr,
+            AGENT_LOGIN_REPO_ID,
+            &script_type,
+            None,
+            &working_dir,
+            &context,
+            channel.clone(),
+        ) {
+            let _ = channel.send(ScriptEvent::Error {
+                message: error.to_string(),
+            });
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn stop_agent_login_terminal(
+    manager: State<'_, ScriptProcessManager>,
+    provider: String,
+    instance_id: String,
+) -> CmdResult<bool> {
+    let key = (
+        AGENT_LOGIN_REPO_ID.to_string(),
+        agent_login_script_type(&provider, &instance_id),
+        None,
+    );
+    Ok(manager.kill(&key))
+}
+
+#[tauri::command]
+pub async fn write_agent_login_terminal_stdin(
+    manager: State<'_, ScriptProcessManager>,
+    provider: String,
+    instance_id: String,
+    data: String,
+) -> CmdResult<bool> {
+    let key = (
+        AGENT_LOGIN_REPO_ID.to_string(),
+        agent_login_script_type(&provider, &instance_id),
+        None,
+    );
+    Ok(manager.write_stdin(&key, data.as_bytes())?)
+}
+
+#[tauri::command]
+pub async fn resize_agent_login_terminal(
+    manager: State<'_, ScriptProcessManager>,
+    provider: String,
+    instance_id: String,
+    cols: u16,
+    rows: u16,
+) -> CmdResult<bool> {
+    let key = (
+        AGENT_LOGIN_REPO_ID.to_string(),
+        agent_login_script_type(&provider, &instance_id),
+        None,
+    );
+    Ok(manager.resize(&key, cols, rows)?)
 }
 
 #[cfg(target_os = "macos")]
