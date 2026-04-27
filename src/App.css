@@ -613,6 +613,20 @@ body {
 	mask-image: linear-gradient(to left, transparent 1.2rem, black 2rem);
 }
 
+/* Terminal tab: fade text under the close button on hover. Mirrors
+   `tab-content-fade` (session-tab pattern) with a tighter range matching
+   the narrower reserved slot. Layout stability comes from the tab's
+   markup — `overflow-hidden` parent + `flex-1 min-w-0` label wrapper —
+   so toggling mask is purely a paint change and never shifts glyphs. */
+.group\/tab:hover .terminal-tab-fade {
+	-webkit-mask-image: linear-gradient(
+		to left,
+		transparent 0.5rem,
+		black 1.2rem
+	);
+	mask-image: linear-gradient(to left, transparent 0.5rem, black 1.2rem);
+}
+
 /* Workspace row: fade text under hover action icons (mirrors tab-content-fade).
    Transparent/solid stops read from --row-fade-transparent/--row-fade-solid so
    multi-icon variants (e.g. archived rows with restore + delete) can widen

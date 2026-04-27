@@ -255,8 +255,8 @@ export const WorkspaceRowItem = memo(
 							isBusy && "pointer-events-auto opacity-100",
 						)}
 					>
-						<Tooltip>
-							<TooltipTrigger asChild>
+						{(() => {
+							const actionButton = (
 								<Button
 									aria-label={actionLabel}
 									disabled={Boolean(workspaceActionsDisabled || isBusy)}
@@ -280,46 +280,45 @@ export const WorkspaceRowItem = memo(
 								>
 									{actionIcon}
 								</Button>
-							</TooltipTrigger>
-							<TooltipContent
-								side="top"
-								sideOffset={4}
-								className="flex h-[22px] items-center rounded-md px-1.5 text-[11px] leading-none"
-							>
-								<span>{actionLabel}</span>
-							</TooltipContent>
-						</Tooltip>
-						{isRestoreAction && onDeleteWorkspace ? (
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<Button
-										aria-label="Delete permanently"
-										disabled={Boolean(workspaceActionsDisabled || isBusy)}
-										onClick={(event) => {
-											event.stopPropagation();
-											if (workspaceActionsDisabled || isBusy) return;
-											onDeleteWorkspace(row.id);
-										}}
-										variant="ghost"
-										size="icon-xs"
-										className={cn(
-											"size-5 rounded-md p-0 text-muted-foreground",
-											workspaceActionsDisabled
-												? "cursor-not-allowed opacity-60"
-												: "cursor-pointer hover:text-destructive",
-										)}
+							);
+							// Archived rows show restore + delete with no tooltips
+							// (the icons are already self-explanatory and the
+							// extra hover layer on a destructive control feels noisy).
+							return isRestoreAction ? (
+								actionButton
+							) : (
+								<Tooltip>
+									<TooltipTrigger asChild>{actionButton}</TooltipTrigger>
+									<TooltipContent
+										side="top"
+										sideOffset={4}
+										className="flex h-[22px] items-center rounded-md px-1.5 text-[11px] leading-none"
 									>
-										<Trash2 className="size-3.5" strokeWidth={2.1} />
-									</Button>
-								</TooltipTrigger>
-								<TooltipContent
-									side="top"
-									sideOffset={4}
-									className="flex h-[22px] items-center rounded-md px-1.5 text-[11px] leading-none"
-								>
-									<span>Delete permanently</span>
-								</TooltipContent>
-							</Tooltip>
+										<span>{actionLabel}</span>
+									</TooltipContent>
+								</Tooltip>
+							);
+						})()}
+						{isRestoreAction && onDeleteWorkspace ? (
+							<Button
+								aria-label="Delete permanently"
+								disabled={Boolean(workspaceActionsDisabled || isBusy)}
+								onClick={(event) => {
+									event.stopPropagation();
+									if (workspaceActionsDisabled || isBusy) return;
+									onDeleteWorkspace(row.id);
+								}}
+								variant="ghost"
+								size="icon-xs"
+								className={cn(
+									"size-5 rounded-md p-0 text-muted-foreground",
+									workspaceActionsDisabled
+										? "cursor-not-allowed opacity-60"
+										: "cursor-pointer hover:text-destructive",
+								)}
+							>
+								<Trash2 className="size-3.5" strokeWidth={2.1} />
+							</Button>
 						) : null}
 					</span>
 				) : null}

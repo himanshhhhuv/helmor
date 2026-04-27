@@ -1,13 +1,26 @@
 import { useEffect, useMemo, useRef } from "react";
+import { getActiveScope } from "./focus-scope";
 import { normalizeShortcutEvent } from "./format";
 import { isShortcutRecordingActive } from "./recording-state";
-import { getShortcut, getShortcutConflicts } from "./registry";
-import type { ShortcutId, ShortcutMap } from "./types";
+import {
+	getShortcut,
+	getShortcutConflicts,
+	SHORTCUT_DEFINITION_BY_ID,
+} from "./registry";
+import type { ShortcutId, ShortcutMap, ShortcutScope } from "./types";
 
 export type ShortcutHandler = {
 	id: ShortcutId;
 	callback: () => void;
 	enabled?: boolean;
+};
+
+type Registration = {
+	callback: () => void;
+	enabled: boolean;
+	hotkey: string | null;
+	id: ShortcutId;
+	scopes: readonly ShortcutScope[];
 };
 
 type UseAppShortcutsArgs = {
@@ -16,18 +29,22 @@ type UseAppShortcutsArgs = {
 };
 
 export function useAppShortcuts({ overrides, handlers }: UseAppShortcutsArgs) {
-	const registrations = useMemo(() => {
-		const { disabledHotkeys } = getShortcutConflicts(overrides);
+	const registrations = useMemo<Registration[]>(() => {
+		const { disabledIds } = getShortcutConflicts(overrides);
 		return handlers
-			.map(({ id, callback, enabled = true }) => ({
-				callback,
-				enabled,
-				hotkey: getShortcut(overrides, id),
-				id,
-			}))
+			.map(({ id, callback, enabled = true }) => {
+				const definition = SHORTCUT_DEFINITION_BY_ID.get(id);
+				return {
+					callback,
+					enabled,
+					hotkey: getShortcut(overrides, id),
+					id,
+					scopes: definition?.scopes ?? [],
+				};
+			})
 			.filter(
 				(registration) =>
-					registration.hotkey && !disabledHotkeys.has(registration.hotkey),
+					registration.hotkey && !disabledIds.has(registration.id),
 			);
 	}, [handlers, overrides]);
 	const registrationsRef = useRef(registrations);
@@ -38,9 +55,15 @@ export function useAppShortcuts({ overrides, handlers }: UseAppShortcutsArgs) {
 			if (isShortcutRecordingActive()) return;
 
 			const hotkey = normalizeShortcutEvent(event);
+			if (!hotkey) return;
+			const activeScope = getActiveScope();
+
 			const match = registrationsRef.current.find(
 				(registration) =>
-					registration.enabled && registration.hotkey === hotkey,
+					registration.enabled &&
+					registration.hotkey === hotkey &&
+					(registration.scopes.includes("app") ||
+						registration.scopes.includes(activeScope)),
 			);
 			if (!match) return;
 			event.preventDefault();

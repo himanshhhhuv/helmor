@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 import {
 	createContext,
 	useCallback,
@@ -9,77 +9,58 @@ import {
 } from "react";
 import { suspendTerminalFit } from "@/components/terminal-output";
 import { Button } from "@/components/ui/button";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { WorkspaceCommitButtonMode } from "@/features/commit/button";
+import { getShortcut } from "@/features/shortcuts/registry";
+import { InlineShortcutDisplay } from "@/features/shortcuts/shortcut-display";
+import { useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import type { ScriptIconState } from "./hooks/use-script-status";
 import { ScriptStatusIcon } from "./script-status-icon";
+import {
+	getTerminalDisplayTitle,
+	type TerminalInstance,
+} from "./terminal-store";
 
 export const MIN_SECTION_HEIGHT = 48;
-// Default body height reserved for the tabs section when first expanded.
-// Larger than MIN_SECTION_HEIGHT so the Setup/Run panel opens with enough
-// room to comfortably show its empty/idle state.
 export const DEFAULT_TABS_BODY_HEIGHT = 128;
 export const RESIZE_HIT_AREA = 10;
 export const TABS_ANIMATION_MS = 350;
-// Apple-style easing — slow start, ultra-smooth tail. Used consistently for
-// the inspector's panel toggle, the ChevronDown rotation, and the hover-zoom
-// width/height/box-shadow transitions so every motion in this area feels
-// like the same animation family.
+/** Apple-style easing — used consistently across panel toggle, chevron, and hover-zoom. */
 export const TABS_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 
-// Hover-to-zoom configuration for the Setup/Run tabs container.
-// When the panel is open and the pointer lingers over it for this long,
-// the whole container grows (actual width / height, not a visual scale)
-// from its bottom-right corner so the terminal output has more real
-// estate. Pulling the pointer off the panel snaps it back to its
-// original size.
-// 300ms is the industry-standard hover-intent threshold (VSCode, Material
-// Design). Shorter than ~250ms fires on "just passing through"; longer than
-// ~400ms feels sluggish. 300ms cleanly separates "I paused here on purpose"
-// from "my cursor is just crossing this region."
+/** 300ms is the industry-standard hover-intent threshold (VSCode/Material). */
 export const TABS_HOVER_ACTIVATION_MS = 300;
 export const TABS_HOVER_TRANSITION_MS = 400;
-// Multiplier applied to both width and height when zoomed. 2 means the
-// zoomed panel is twice as wide and twice as tall as its resting size,
-// growing up-and-left from the bottom-right anchor.
+/** 2x both axes — grows up-and-left from the bottom-right anchor. */
 export const TABS_HOVER_ZOOM_MULTIPLIER = 2;
-// A quick blur "pulse" we run on the inner content while the container
-// is mid-transition. During the CSS width/height animation the inner
-// terminal canvas is being GPU-upscaled (on expand) or downscaled (on
-// collapse) — it's only really crisp once xterm's FitAddon re-fits at
-// the end. Blurring the content through the transition hides that
-// scaling artefact and the final re-layout flash.
 const TABS_BLUR_PEAK_PX = 6;
 const TABS_BLUR_FADE_MS = 120;
-// Hold blur past the end of the transition so the xterm re-fit (which
-// runs ~50ms after the main transition finishes) is still hidden.
+/** Hold blur slightly past the transition so xterm's late re-fit stays hidden. */
 export const TABS_BLUR_HOLD_UNTIL_MS = TABS_HOVER_TRANSITION_MS - 50;
-// Minimum layout height of the collapsed wrapper. The real content lives
-// inside an absolutely-positioned child, so we need to reserve this
-// space explicitly to keep the header row visible when the panel is
-// closed. 32px header (h-8) + 1px section border-b = 33px.
+/** 32px header (h-8) + 1px section border-b. */
 const TABS_WRAPPER_COLLAPSED_MIN_HEIGHT_PX = 33;
 
 export const INSPECTOR_SECTION_HEADER_CLASS =
 	"flex h-8 min-w-0 shrink-0 items-center justify-between border-b border-border/60 bg-muted/25 px-3";
 export const INSPECTOR_SECTION_TITLE_CLASS =
 	"text-[13px] leading-8 font-medium tracking-[-0.01em] text-muted-foreground";
+/** `px-3` + `gap-0` on tablist → uniform 24px gap between any two tabs. */
 const INSPECTOR_TAB_BUTTON_CLASS =
-	"relative inline-flex h-full cursor-pointer items-center justify-center gap-1.5 px-0 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-0";
+	"relative inline-flex h-full cursor-pointer items-center justify-center gap-1.5 px-3 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-0";
 
-// Zoom state published to descendants of InspectorTabsSection so tab bodies
-// can key UI off the hover-zoom state (e.g. the absolute-positioned corner
-// Stop/Rerun button, which is only reachable once the panel has grown).
+/** Zoom state published to tab bodies (e.g. corner Stop/Rerun button). */
 type TabsZoomState = {
-	/** True for the full duration of both the expand and collapse animations. */
+	/** True for the full duration of both expand and collapse animations. */
 	isZoomPresented: boolean;
-	/** Target of the CSS transition — true while zoomed in, false while resting. */
+	/** Target of the CSS transition — true while zoomed in. */
 	isHoverExpanded: boolean;
 };
 
-// Exported so tests (and any future consumer that renders a tab outside of
-// InspectorTabsSection) can simulate the zoomed state by wrapping children in
-// `<TabsZoomContext.Provider value={{ isZoomPresented: true, isHoverExpanded: true }}>`.
 export const TabsZoomContext = createContext<TabsZoomState>({
 	isZoomPresented: false,
 	isHoverExpanded: false,
@@ -125,6 +106,18 @@ type InspectorTabsSectionProps = {
 	setupScriptState: ScriptIconState;
 	runScriptState: ScriptIconState;
 	/**
+	 * Live list of terminal sub-tabs for the current workspace. Each instance
+	 * becomes a tab in the unified row, identified by `instance.id` as the
+	 * activeTab value. Display labels are positional (`getTerminalDisplayTitle`).
+	 */
+	terminalInstances: TerminalInstance[];
+	/** Spawn a new terminal and switch to it. */
+	onAddTerminal: () => void;
+	/** SIGTERM the shell and remove its tab. */
+	onCloseTerminal: (instanceId: string) => void;
+	/** False when there's no repo/workspace context — disables the "+" button. */
+	canSpawnTerminal: boolean;
+	/**
 	 * Gate for the hover-to-zoom effect. When false, hovering the body does
 	 * nothing — used so we only zoom when there's actual terminal output worth
 	 * enlarging (and not on the empty "Run setup" / "Open settings" placeholders).
@@ -142,9 +135,15 @@ export function InspectorTabsSection({
 	tabActions,
 	setupScriptState,
 	runScriptState,
+	terminalInstances,
+	onAddTerminal,
+	onCloseTerminal,
+	canSpawnTerminal,
 	canHoverExpand,
 	children,
 }: InspectorTabsSectionProps) {
+	const { settings } = useSettings();
+	const newTerminalShortcut = getShortcut(settings.shortcuts, "terminal.new");
 	// `isHoverExpanded` drives the CSS transitions we CAN interpolate
 	// (width / height / box-shadow). Flipping it to `false` immediately starts
 	// the shrink animation.
@@ -407,7 +406,12 @@ export function InspectorTabsSection({
 				style={{
 					width: isHoverExpanded ? zoomedSize : "100%",
 					height: isHoverExpanded ? zoomedSize : "100%",
-					transition: `width ${TABS_HOVER_TRANSITION_MS}ms ${TABS_EASING}, height ${TABS_HOVER_TRANSITION_MS}ms ${TABS_EASING}, box-shadow ${TABS_HOVER_TRANSITION_MS}ms ${TABS_EASING}`,
+					// `height` only transitions during hover-zoom; outside of
+					// zoom the toggle's web-animation drives wrapper height
+					// and inner must follow instantly.
+					transition: isZoomPresented
+						? `width ${TABS_HOVER_TRANSITION_MS}ms ${TABS_EASING}, height ${TABS_HOVER_TRANSITION_MS}ms ${TABS_EASING}, box-shadow ${TABS_HOVER_TRANSITION_MS}ms ${TABS_EASING}`
+						: `width ${TABS_HOVER_TRANSITION_MS}ms ${TABS_EASING}, box-shadow ${TABS_HOVER_TRANSITION_MS}ms ${TABS_EASING}`,
 					// Tell the browser that nothing inside this container can affect
 					// layout, paint, or size outside of it. This lets the browser
 					// treat the zoom box as an independent compositing/layout
@@ -467,7 +471,7 @@ export function InspectorTabsSection({
 							<div
 								role="tablist"
 								aria-orientation="horizontal"
-								className="flex h-full self-stretch items-stretch gap-4"
+								className="scrollbar-none flex h-full min-w-0 flex-1 self-stretch items-stretch gap-0 overflow-x-auto overflow-y-hidden"
 							>
 								<button
 									type="button"
@@ -478,6 +482,7 @@ export function InspectorTabsSection({
 									tabIndex={activeTab === "setup" ? 0 : -1}
 									className={cn(
 										INSPECTOR_TAB_BUTTON_CLASS,
+										"shrink-0",
 										activeTab === "setup" && "text-foreground",
 									)}
 									onClick={() => onTabChange("setup")}
@@ -501,6 +506,7 @@ export function InspectorTabsSection({
 									tabIndex={activeTab === "run" ? 0 : -1}
 									className={cn(
 										INSPECTOR_TAB_BUTTON_CLASS,
+										"shrink-0",
 										activeTab === "run" && "text-foreground",
 									)}
 									onClick={() => onTabChange("run")}
@@ -515,8 +521,110 @@ export function InspectorTabsSection({
 										)}
 									/>
 								</button>
+								{terminalInstances.length === 0 ? (
+									// Placeholder tab so the Terminal entry point is always
+									// discoverable, even on a fresh workspace with no live
+									// shells. Clicking it spawns the first terminal — same
+									// effect as clicking "+", but with a visible label.
+									<button
+										type="button"
+										role="tab"
+										id="inspector-tab-terminal-placeholder"
+										aria-selected={false}
+										tabIndex={-1}
+										disabled={!canSpawnTerminal}
+										onClick={onAddTerminal}
+										className={cn(
+											INSPECTOR_TAB_BUTTON_CLASS,
+											"shrink-0 disabled:cursor-not-allowed disabled:opacity-50",
+										)}
+									>
+										Terminal
+									</button>
+								) : (
+									terminalInstances.map((instance, index) => {
+										const label = getTerminalDisplayTitle(
+											index,
+											terminalInstances.length,
+										);
+										const isActive = activeTab === instance.id;
+										return (
+											<div
+												key={instance.id}
+												role="tab"
+												id={`inspector-tab-terminal-${instance.id}`}
+												aria-controls={`inspector-panel-terminal-${instance.id}`}
+												aria-selected={isActive}
+												tabIndex={isActive ? 0 : -1}
+												// Mirrors session-tab layout (no hover color, layout
+												// stable on mask toggle). `transform-gpu` keeps it
+												// on its own compositing layer.
+												className={cn(
+													"group/tab relative flex h-full min-w-[5rem] shrink-0 transform-gpu cursor-pointer items-center overflow-hidden px-3 text-[12px] font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-0",
+													isActive && "text-foreground",
+												)}
+												onClick={() => onTabChange(instance.id)}
+												onKeyDown={(e) => {
+													if (e.key === "Enter" || e.key === " ") {
+														e.preventDefault();
+														onTabChange(instance.id);
+													}
+												}}
+											>
+												<span className="terminal-tab-fade flex min-w-0 flex-1 items-center justify-center">
+													<span className="truncate">{label}</span>
+												</span>
+												<button
+													type="button"
+													aria-label={`Close ${label}`}
+													onClick={(e) => {
+														e.stopPropagation();
+														onCloseTerminal(instance.id);
+													}}
+													// Visibility-only toggle (no opacity transition) —
+													// matches session-tab + workspace-row patterns.
+													className="pointer-events-none invisible absolute inset-y-0 right-0 flex w-3 cursor-pointer items-center justify-center text-muted-foreground/70 hover:text-foreground group-hover/tab:pointer-events-auto group-hover/tab:visible focus-visible:pointer-events-auto focus-visible:visible"
+												>
+													<X className="size-3" strokeWidth={2} />
+												</button>
+												<span
+													aria-hidden="true"
+													className={cn(
+														"pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-foreground opacity-0 transition-opacity",
+														isActive && "opacity-100",
+													)}
+												/>
+											</div>
+										);
+									})
+								)}
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<button
+											type="button"
+											aria-label="New terminal"
+											onClick={onAddTerminal}
+											disabled={!canSpawnTerminal}
+											className="ml-1 flex h-full w-6 shrink-0 cursor-pointer items-center justify-center self-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
+										>
+											<Plus className="size-3.5" strokeWidth={1.8} />
+										</button>
+									</TooltipTrigger>
+									<TooltipContent
+										side="bottom"
+										className="flex h-[24px] items-center gap-2 rounded-md px-2 text-[12px] leading-none"
+									>
+										<span>New terminal</span>
+										{newTerminalShortcut ? (
+											<InlineShortcutDisplay
+												hotkey={newTerminalShortcut}
+												className="text-background/60"
+											/>
+										) : null}
+									</TooltipContent>
+								</Tooltip>
 							</div>
-							<div className="ml-auto flex shrink-0 items-center gap-1 self-center">
+							<div className="ml-2 flex shrink-0 items-center gap-1 self-center">
 								{tabActions}
 								<Button
 									type="button"

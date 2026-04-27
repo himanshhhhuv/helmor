@@ -36,6 +36,7 @@ const GROUPS: ShortcutGroup[] = [
 	"Actions",
 	"System",
 	"Composer",
+	"Terminal",
 ];
 
 const MODIFIER_KEYS = new Set(["Alt", "Control", "Meta", "Shift"]);

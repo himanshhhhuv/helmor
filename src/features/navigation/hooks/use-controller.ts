@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { closeAllTerminalsForWorkspace } from "@/features/inspector/terminal-store";
 import {
 	type AddRepositoryResponse,
 	addRepositoryFromLocalPath,
@@ -1026,6 +1027,10 @@ export function useWorkspacesSidebarController({
 
 	const handleDeleteWorkspace = useCallback(
 		(workspaceId: string) => {
+			// Tear down any live terminal shells in this workspace so they
+			// don't keep running in the background after the workspace is
+			// gone from the UI.
+			closeAllTerminalsForWorkspace(workspaceId);
 			const wasSelected = selectedWorkspaceId === workspaceId;
 			setPendingArchives((current) => {
 				if (!current.has(workspaceId)) {

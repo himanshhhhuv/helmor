@@ -166,42 +166,51 @@ export function useWorkspaceInspectorSidebar({
 		const tabsFrom = tabsElement.offsetHeight;
 		const actionsFrom = actionsElement?.offsetHeight ?? 0;
 
+		// Lock current sizes before flushSync so the className swap doesn't
+		// produce a one-frame layout jump (tabs gains flex-1, actions loses
+		// it). Same task = no paint between lock/unlock/measure.
+		tabsElement.style.height = `${tabsFrom}px`;
+		tabsElement.style.flex = "none";
+		if (actionsElement) {
+			actionsElement.style.height = `${actionsFrom}px`;
+			actionsElement.style.flex = "none";
+		}
+
 		flushSync(() => setTabsOpen((current) => !current));
 
+		// Unlock briefly to measure target sizes, then animateSection re-locks.
+		tabsElement.style.height = "";
+		tabsElement.style.flex = "";
+		if (actionsElement) {
+			actionsElement.style.height = "";
+			actionsElement.style.flex = "";
+		}
 		const tabsTo = tabsElement.offsetHeight;
 		const actionsTo = actionsElement?.offsetHeight ?? 0;
 		if (tabsFrom === tabsTo) {
 			return;
 		}
 
-		const isExpanding = tabsTo > tabsFrom;
 		const options = { duration: TABS_ANIMATION_MS, easing: TABS_EASING };
 
-		const animateSection = (
-			element: HTMLElement,
-			from: number,
-			to: number,
-			needsFlexOverride: boolean,
-		) => {
+		const animateSection = (element: HTMLElement, from: number, to: number) => {
 			element.style.overflow = "hidden";
-			if (needsFlexOverride) {
-				element.style.flex = "none";
-			}
+			element.style.flex = "none";
+			element.style.height = `${from}px`;
 			const animation = element.animate(
 				[{ height: `${from}px` }, { height: `${to}px` }],
 				options,
 			);
 			animation.onfinish = animation.oncancel = () => {
 				element.style.overflow = "";
-				if (needsFlexOverride) {
-					element.style.flex = "";
-				}
+				element.style.flex = "";
+				element.style.height = "";
 			};
 		};
 
-		animateSection(tabsElement, tabsFrom, tabsTo, isExpanding);
+		animateSection(tabsElement, tabsFrom, tabsTo);
 		if (actionsElement && actionsFrom !== actionsTo) {
-			animateSection(actionsElement, actionsFrom, actionsTo, !isExpanding);
+			animateSection(actionsElement, actionsFrom, actionsTo);
 		}
 	}, []);
 

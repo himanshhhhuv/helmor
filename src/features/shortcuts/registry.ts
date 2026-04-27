@@ -1,4 +1,9 @@
-import type { ShortcutDefinition, ShortcutId, ShortcutMap } from "./types";
+import type {
+	ShortcutDefinition,
+	ShortcutId,
+	ShortcutMap,
+	ShortcutScope,
+} from "./types";
 
 export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 	{
@@ -6,7 +11,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Previous workspace",
 		group: "Navigation",
 		defaultHotkey: "Mod+Alt+ArrowUp",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -14,7 +19,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Next workspace",
 		group: "Navigation",
 		defaultHotkey: "Mod+Alt+ArrowDown",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -22,7 +27,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Previous session",
 		group: "Navigation",
 		defaultHotkey: "Mod+Alt+ArrowLeft",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -30,7 +35,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Next session",
 		group: "Navigation",
 		defaultHotkey: "Mod+Alt+ArrowRight",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -38,7 +43,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "New session",
 		group: "Session",
 		defaultHotkey: "Mod+T",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -46,7 +51,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Close current session",
 		group: "Session",
 		defaultHotkey: "Mod+W",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -54,7 +59,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Reopen closed session",
 		group: "Session",
 		defaultHotkey: "Mod+Shift+T",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -62,7 +67,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Copy workspace path",
 		group: "Workspace",
 		defaultHotkey: "Mod+Shift+C",
-		scope: "global",
+		scopes: ["app"],
 		editable: true,
 	},
 	{
@@ -70,7 +75,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Open repository in default app",
 		group: "Workspace",
 		defaultHotkey: "Mod+O",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -78,7 +83,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Create new workspace",
 		group: "Workspace",
 		defaultHotkey: "Mod+N",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -86,15 +91,16 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Add repository",
 		group: "Workspace",
 		defaultHotkey: "Mod+Shift+N",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
 		id: "script.run",
 		title: "Run / stop script",
 		group: "Actions",
+		// chat-only so the terminal owns Mod+R for shell readline.
 		defaultHotkey: "Mod+R",
-		scope: "global",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -102,7 +108,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Create PR",
 		group: "Actions",
 		defaultHotkey: "Mod+Shift+P",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -110,7 +116,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Commit and push",
 		group: "Actions",
 		defaultHotkey: "Mod+Shift+Y",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -118,7 +124,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Pull latest from main",
 		group: "Actions",
 		defaultHotkey: "Mod+Shift+L",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -126,7 +132,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Merge PR",
 		group: "Actions",
 		defaultHotkey: "Mod+Shift+M",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -134,7 +140,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Fix errors",
 		group: "Actions",
 		defaultHotkey: "Mod+Shift+X",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -142,7 +148,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Open PR in browser",
 		group: "Actions",
 		defaultHotkey: "Mod+Shift+G",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -150,7 +156,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Open settings",
 		group: "System",
 		defaultHotkey: "Mod+,",
-		scope: "global",
+		scopes: ["app"],
 		editable: true,
 	},
 	{
@@ -158,7 +164,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Toggle theme (dark/light)",
 		group: "System",
 		defaultHotkey: "Mod+Alt+T",
-		scope: "global",
+		scopes: ["app"],
 		editable: true,
 	},
 	{
@@ -166,7 +172,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Toggle left sidebar",
 		group: "System",
 		defaultHotkey: "Mod+B",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -174,7 +180,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Toggle right sidebar",
 		group: "System",
 		defaultHotkey: "Mod+Alt+B",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -182,7 +188,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Toggle zen mode",
 		group: "System",
 		defaultHotkey: "Mod+.",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -190,7 +196,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Zoom in",
 		group: "System",
 		defaultHotkey: "Mod+=",
-		scope: "global",
+		scopes: ["app"],
 		editable: true,
 	},
 	{
@@ -198,7 +204,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Zoom out",
 		group: "System",
 		defaultHotkey: "Mod+-",
-		scope: "global",
+		scopes: ["app"],
 		editable: true,
 	},
 	{
@@ -206,7 +212,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Reset zoom",
 		group: "System",
 		defaultHotkey: "Mod+0",
-		scope: "global",
+		scopes: ["app"],
 		editable: true,
 	},
 	{
@@ -214,7 +220,10 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Focus chat input",
 		group: "Composer",
 		defaultHotkey: "Mod+L",
-		scope: "conversation",
+		// App-scoped so the user can pop focus back to the composer from
+		// anywhere — including the terminal — making composer ↔ terminal
+		// (Mod+L vs Mod+Shift+J) a clean two-way switch.
+		scopes: ["app"],
 		editable: true,
 	},
 	{
@@ -222,7 +231,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Toggle plan mode",
 		group: "Composer",
 		defaultHotkey: "Shift+Tab",
-		scope: "conversation",
+		scopes: ["chat"],
 		editable: true,
 	},
 	{
@@ -230,7 +239,55 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 		title: "Open model picker",
 		group: "Composer",
 		defaultHotkey: "Alt+P",
-		scope: "conversation",
+		scopes: ["chat"],
+		editable: true,
+	},
+	{
+		id: "terminal.new",
+		title: "New terminal",
+		group: "Terminal",
+		defaultHotkey: "Mod+T",
+		scopes: ["terminal"],
+		editable: true,
+	},
+	{
+		id: "terminal.close",
+		title: "Close current terminal",
+		group: "Terminal",
+		defaultHotkey: "Mod+W",
+		scopes: ["terminal"],
+		editable: true,
+	},
+	{
+		id: "terminal.previous",
+		title: "Previous terminal",
+		group: "Terminal",
+		defaultHotkey: "Mod+Alt+ArrowLeft",
+		scopes: ["terminal"],
+		editable: true,
+	},
+	{
+		id: "terminal.next",
+		title: "Next terminal",
+		group: "Terminal",
+		defaultHotkey: "Mod+Alt+ArrowRight",
+		scopes: ["terminal"],
+		editable: true,
+	},
+	{
+		id: "inspector.focusTerminal",
+		title: "Focus terminal",
+		group: "Terminal",
+		defaultHotkey: "Mod+Shift+J",
+		scopes: ["app"],
+		editable: true,
+	},
+	{
+		id: "inspector.toggleScripts",
+		title: "Toggle scripts panel",
+		group: "Workspace",
+		defaultHotkey: "Mod+J",
+		scopes: ["app"],
 		editable: true,
 	},
 ];
@@ -264,24 +321,40 @@ export function updateShortcutOverride(
 	return next;
 }
 
+// Two scope sets "overlap" if at least one shortcut would fire under the same
+// active scope. "app" is the wildcard — anything paired with "app" overlaps.
+export function scopesOverlap(
+	a: readonly ShortcutScope[],
+	b: readonly ShortcutScope[],
+): boolean {
+	if (a.includes("app") || b.includes("app")) return true;
+	return a.some((scope) => b.includes(scope));
+}
+
+// Scope-aware conflict for the settings UI: a shortcut conflicts with another
+// only if they share both a hotkey AND a scope (so chat's Mod+T and terminal's
+// Mod+T are deliberately fine).
 export function findShortcutConflict(
 	overrides: ShortcutMap,
 	id: ShortcutId,
 	hotkey: string | null,
 ): ShortcutDefinition | null {
 	if (!hotkey) return null;
+	const subject = SHORTCUT_DEFINITION_BY_ID.get(id);
+	if (!subject) return null;
 	return (
 		SHORTCUT_DEFINITIONS.find(
 			(definition) =>
 				definition.id !== id &&
-				getShortcut(overrides, definition.id) === hotkey,
+				getShortcut(overrides, definition.id) === hotkey &&
+				scopesOverlap(subject.scopes, definition.scopes),
 		) ?? null
 	);
 }
 
 export function getShortcutConflicts(overrides: ShortcutMap): {
 	conflictById: Partial<Record<ShortcutId, ShortcutDefinition[]>>;
-	disabledHotkeys: Set<string>;
+	disabledIds: Set<ShortcutId>;
 } {
 	const definitionsByHotkey = new Map<string, ShortcutDefinition[]>();
 	for (const definition of SHORTCUT_DEFINITIONS) {
@@ -293,15 +366,20 @@ export function getShortcutConflicts(overrides: ShortcutMap): {
 	}
 
 	const conflictById: Partial<Record<ShortcutId, ShortcutDefinition[]>> = {};
-	const disabledHotkeys = new Set<string>();
-	for (const [hotkey, definitions] of definitionsByHotkey) {
+	const disabledIds = new Set<ShortcutId>();
+	for (const definitions of definitionsByHotkey.values()) {
 		if (definitions.length < 2) continue;
-		disabledHotkeys.add(hotkey);
-		for (const definition of definitions) {
-			conflictById[definition.id] = definitions.filter(
-				(candidate) => candidate.id !== definition.id,
-			);
+		for (let i = 0; i < definitions.length; i++) {
+			for (let j = i + 1; j < definitions.length; j++) {
+				const a = definitions[i];
+				const b = definitions[j];
+				if (!scopesOverlap(a.scopes, b.scopes)) continue;
+				conflictById[a.id] = [...(conflictById[a.id] ?? []), b];
+				conflictById[b.id] = [...(conflictById[b.id] ?? []), a];
+				disabledIds.add(a.id);
+				disabledIds.add(b.id);
+			}
 		}
 	}
-	return { conflictById, disabledHotkeys };
+	return { conflictById, disabledIds };
 }

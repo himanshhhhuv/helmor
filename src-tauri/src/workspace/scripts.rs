@@ -315,11 +315,15 @@ pub fn run_script(
 
 /// Spawn a blank interactive login shell on a PTY without feeding any script.
 ///
-/// Used by the onboarding embedded auth terminals (`gh auth login`,
-/// `glab auth login`, `claude /login`, `codex login`) — the user gets a
-/// normal `$SHELL` prompt at `working_dir` and the caller drives input via
-/// `ScriptProcessManager::write_stdin`. The PTY stays open until the shell
-/// exits or the caller invokes `kill`.
+/// Two callers today:
+/// - The Inspector Terminal tab — user gets a `$SHELL` prompt at `working_dir`
+///   and types commands directly; the PTY stays open until the user types
+///   `exit` (or the caller invokes `kill` via `stop_terminal`).
+/// - Onboarding embedded auth terminals (`gh auth login`, `glab auth login`,
+///   `claude /login`, `codex login`) — the caller drives input programmatically
+///   via `ScriptProcessManager::write_stdin`.
+///
+/// In both cases the PTY persists across multiple `write_stdin` calls.
 #[allow(clippy::too_many_arguments)]
 pub fn run_terminal_session(
     manager: &ScriptProcessManager,
@@ -351,8 +355,9 @@ pub fn run_terminal_session(
 ///
 /// When `script` is `Some`, the shell is fed the wrapped command and exits
 /// once the command completes. When `script` is `None`, the shell starts
-/// blank — used by the onboarding embedded auth terminals where the caller
-/// drives input via `write_stdin`.
+/// blank — used by the Terminal tab (user types commands directly) and by
+/// the onboarding embedded auth terminals (caller drives input via
+/// `write_stdin`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn run_script_with_shell(
     manager: &ScriptProcessManager,
@@ -481,13 +486,17 @@ pub(crate) fn run_script_with_shell(
                         let _ = ch.send(ScriptEvent::Stdout { data });
                     }
                     Err(e) => {
-                        // EIO is expected when the child exits and slave closes.
-                        if e.raw_os_error() != Some(libc::EIO) {
-                            tracing::debug!(error = %e, "PTY read error");
-                        }
+                        // master_fd is non-blocking, so an idle PTY (Terminal
+                        // tab waiting for keystrokes) returns EAGAIN every
+                        // poll. Sleep + continue without logging — otherwise
+                        // the debug log floods at PTY_POLL_INTERVAL frequency.
                         if e.kind() == std::io::ErrorKind::WouldBlock {
                             std::thread::sleep(PTY_POLL_INTERVAL);
                             continue;
+                        }
+                        // EIO is expected when the child exits and slave closes.
+                        if e.raw_os_error() != Some(libc::EIO) {
+                            tracing::debug!(error = %e, "PTY read error");
                         }
                         break;
                     }
@@ -501,8 +510,9 @@ pub(crate) fn run_script_with_shell(
     // it, print a completion message, then exit. The PTY stays open the
     // entire time so Ctrl+C / typing reaches whatever the shell is running.
     //
-    // Skipped in terminal mode (`script == None`): the shell stays at its
-    // prompt and waits for the caller to drive input via `write_stdin`.
+    // Skipped when `script == None` (Terminal tab / onboarding auth terminals):
+    // the shell stays at its prompt and waits for input — the user typing
+    // directly in the Terminal tab, or the caller driving via `write_stdin`.
     if let Some(script) = script {
         let wrapped = format!(
             "eval {}; __helmor_ec=$?; printf '\\r\\n\\033[2m[Completed with exit code %d]\\033[0m\\r\\n' $__helmor_ec; exit $__helmor_ec\n",

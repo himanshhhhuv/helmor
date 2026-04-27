@@ -1,10 +1,15 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
 	CommitButtonState,
 	WorkspaceCommitButtonMode,
 } from "@/features/commit/button";
+import {
+	type ShortcutHandler,
+	useAppShortcuts,
+} from "@/features/shortcuts/use-app-shortcuts";
 import type { ChangeRequestInfo } from "@/lib/api";
 import type { DiffOpenOptions } from "@/lib/editor-session";
+import { useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { useWorkspaceInspectorSidebar } from "./hooks/use-inspector";
 import { useScriptStatus } from "./hooks/use-script-status";
@@ -15,6 +20,14 @@ import { ActionsSection } from "./sections/actions";
 import { ChangesSection } from "./sections/changes";
 import { OpenDevServerButton, RunTab } from "./sections/run";
 import { SetupTab } from "./sections/setup";
+import { TerminalInstancePanel } from "./sections/terminal";
+import {
+	closeTerminal,
+	createTerminal,
+	subscribeToWorkspaceList,
+	TERMINAL_INSTANCE_LIMIT,
+	type TerminalInstance,
+} from "./terminal-store";
 
 type WorkspaceInspectorSidebarProps = {
 	workspaceId?: string | null;
@@ -126,16 +139,216 @@ export function WorkspaceInspectorSidebar({
 		!!repoScripts?.runScript?.trim(),
 	);
 
+	// Live list of Terminal sub-tabs for the current workspace, observed at
+	// the sidebar level so each terminal can be rendered as its own tab in
+	// the unified Setup / Run / Terminals row.
+	const [terminalInstances, setTerminalInstances] = useState<
+		TerminalInstance[]
+	>([]);
+	useEffect(() => {
+		if (!workspaceId) {
+			setTerminalInstances([]);
+			return;
+		}
+		return subscribeToWorkspaceList(workspaceId, (list) => {
+			setTerminalInstances(list);
+		});
+	}, [workspaceId]);
+
+	const canSpawnTerminal =
+		!!repoId &&
+		!!workspaceId &&
+		terminalInstances.length < TERMINAL_INSTANCE_LIMIT;
+
+	const handleAddTerminal = useCallback(() => {
+		if (!repoId || !workspaceId) return;
+		const next = createTerminal(repoId, workspaceId);
+		if (next) setActiveTab(next.id);
+	}, [repoId, workspaceId, setActiveTab]);
+
+	const handleCloseTerminal = useCallback(
+		(instanceId: string) => {
+			if (!repoId || !workspaceId) return;
+			// If the closing tab is active, fall back to the neighbour terminal
+			// (right preferred, else left). Else fall back to "setup".
+			if (activeTab === instanceId) {
+				const idx = terminalInstances.findIndex((t) => t.id === instanceId);
+				const fallback =
+					terminalInstances[idx + 1] ?? terminalInstances[idx - 1];
+				setActiveTab(fallback ? fallback.id : "setup");
+			}
+			closeTerminal(repoId, workspaceId, instanceId);
+		},
+		[repoId, workspaceId, activeTab, terminalInstances, setActiveTab],
+	);
+
+	const isTerminalTabActive = terminalInstances.some((t) => t.id === activeTab);
+
+	// Terminal-scope shortcuts. Fire only while xterm has DOM focus — the
+	// `data-focus-scope="terminal"` tag on the panel resolves to "terminal" via
+	// getActiveScope — so they don't compete with chat's Mod+T / Mod+W.
+	const navigateTerminal = useCallback(
+		(offset: -1 | 1) => {
+			if (terminalInstances.length === 0) return;
+			const idx = terminalInstances.findIndex((t) => t.id === activeTab);
+			if (idx === -1) return;
+			const nextIdx =
+				(idx + offset + terminalInstances.length) % terminalInstances.length;
+			const next = terminalInstances[nextIdx];
+			if (next) setActiveTab(next.id);
+		},
+		[terminalInstances, activeTab, setActiveTab],
+	);
+	const { settings: appSettings } = useSettings();
+	// App-scoped smart toggle for the terminal panel.
+	//
+	// Target selection: if the user is already on a terminal tab (either
+	// just viewing it or actively typing in it), stay on that one — don't
+	// hop to the rightmost. Only fall back to the rightmost terminal when
+	// the panel is collapsed (so we don't know which terminal the user
+	// "meant") or when the active tab is Setup/Run (the user wasn't on a
+	// terminal at all). This preserves the current working terminal across
+	// repeated presses.
+	//
+	// Behaviour ladder:
+	//   1. No terminals yet → spawn one, expand the panel, focus it.
+	//   2. Panel collapsed → expand + ensure target is active. Mount path
+	//      will auto-focus the xterm.
+	//   3. Panel open + Setup/Run active → switch to rightmost terminal +
+	//      focus (mount path auto-focuses on isActive flip).
+	//   4. Panel open + a terminal active but focus is elsewhere → pull
+	//      focus into that already-mounted xterm.
+	//   5. Panel open + a terminal active + focus already inside the
+	//      xterm → collapse the panel (acts like the toggle-scripts
+	//      shortcut). Second press of Mod+Shift+J hides the panel.
+	const handleFocusTerminal = useCallback(() => {
+		// 1. Empty state — bootstrap a new terminal.
+		if (terminalInstances.length === 0) {
+			if (!canSpawnTerminal) return;
+			if (!tabsOpen) handleToggleTabs();
+			handleAddTerminal();
+			return;
+		}
+
+		const currentTerminal = terminalInstances.find((t) => t.id === activeTab);
+		const target =
+			currentTerminal ?? terminalInstances[terminalInstances.length - 1];
+
+		// 2. Collapsed → expand. If activeTab already matches target (user
+		//    was on this terminal before collapsing) setActiveTab is a
+		//    no-op; either way the mount path auto-focuses.
+		if (!tabsOpen) {
+			handleToggleTabs();
+			if (activeTab !== target.id) setActiveTab(target.id);
+			return;
+		}
+
+		// 3. Open but Setup/Run active → switch to rightmost.
+		if (activeTab !== target.id) {
+			setActiveTab(target.id);
+			return;
+		}
+
+		// 4 & 5. Open + a terminal already active. Distinguish by where
+		// keyboard focus is right now.
+		const targetPanel = document.getElementById(
+			`inspector-panel-terminal-${target.id}`,
+		);
+		const focusInsideTarget =
+			targetPanel?.contains(document.activeElement) ?? false;
+
+		if (focusInsideTarget) {
+			// 5. Already focused in this terminal — second press collapses.
+			handleToggleTabs();
+		} else {
+			// 4. Pull focus into the existing, already-mounted xterm.
+			window.dispatchEvent(new Event("helmor:focus-active-terminal"));
+		}
+	}, [
+		terminalInstances,
+		canSpawnTerminal,
+		tabsOpen,
+		handleToggleTabs,
+		handleAddTerminal,
+		activeTab,
+		setActiveTab,
+	]);
+
+	const terminalShortcutHandlers = useMemo<ShortcutHandler[]>(
+		() => [
+			{
+				id: "terminal.new",
+				callback: handleAddTerminal,
+				enabled: canSpawnTerminal,
+			},
+			{
+				id: "terminal.close",
+				callback: () => {
+					if (!isTerminalTabActive) return;
+					handleCloseTerminal(activeTab);
+				},
+				enabled: isTerminalTabActive,
+			},
+			{
+				id: "terminal.previous",
+				callback: () => navigateTerminal(-1),
+				enabled: terminalInstances.length > 1,
+			},
+			{
+				id: "terminal.next",
+				callback: () => navigateTerminal(1),
+				enabled: terminalInstances.length > 1,
+			},
+			{
+				id: "inspector.toggleScripts",
+				callback: handleToggleTabs,
+			},
+			{
+				id: "inspector.focusTerminal",
+				callback: handleFocusTerminal,
+				// Always enabled — handler bootstraps a terminal if none
+				// exist, expands when collapsed, focuses when not focused,
+				// and collapses when focus is already in the active xterm.
+				enabled: canSpawnTerminal || terminalInstances.length > 0,
+			},
+		],
+		[
+			activeTab,
+			canSpawnTerminal,
+			handleAddTerminal,
+			handleCloseTerminal,
+			handleFocusTerminal,
+			handleToggleTabs,
+			isTerminalTabActive,
+			navigateTerminal,
+			terminalInstances.length,
+		],
+	);
+	useAppShortcuts({
+		overrides: appSettings.shortcuts,
+		handlers: terminalShortcutHandlers,
+	});
+
+	// Reset to "setup" when the active tab is a terminal id that no longer
+	// matches any current instance — happens when switching workspaces while
+	// a terminal tab was active in the previous one.
+	useEffect(() => {
+		if (activeTab === "setup" || activeTab === "run") return;
+		if (terminalInstances.some((t) => t.id === activeTab)) return;
+		setActiveTab("setup");
+	}, [activeTab, terminalInstances, setActiveTab]);
+
 	// Only allow hover-to-zoom when the active tab has real terminal output.
 	// "idle" = script configured but never run; "no-script" = nothing to run.
 	// In both cases the body is a placeholder (Run / Open-settings button)
 	// that doesn't benefit from — and shouldn't trigger — the enlargement.
-	const activeTabState =
+	const scriptTabState =
 		activeTab === "setup" ? setupScriptState : runScriptState;
-	const canHoverExpand =
-		activeTabState === "running" ||
-		activeTabState === "success" ||
-		activeTabState === "failure";
+	const canHoverExpand = isTerminalTabActive
+		? true
+		: scriptTabState === "running" ||
+			scriptTabState === "success" ||
+			scriptTabState === "failure";
 
 	const handleOpenSettings = onOpenSettings ?? (() => {});
 
@@ -201,6 +414,10 @@ export function WorkspaceInspectorSidebar({
 				tabActions={runTabActions}
 				setupScriptState={setupScriptState}
 				runScriptState={runScriptState}
+				terminalInstances={terminalInstances}
+				onAddTerminal={handleAddTerminal}
+				onCloseTerminal={handleCloseTerminal}
+				canSpawnTerminal={canSpawnTerminal}
 				canHoverExpand={canHoverExpand}
 			>
 				<SetupTab
@@ -219,6 +436,15 @@ export function WorkspaceInspectorSidebar({
 					onStatusChange={setRunStatus}
 					onUrlsChange={setRunUrls}
 				/>
+				{terminalInstances.map((instance) => (
+					<TerminalInstancePanel
+						key={instance.id}
+						repoId={repoId ?? null}
+						workspaceId={workspaceId ?? null}
+						instance={instance}
+						isActive={activeTab === instance.id}
+					/>
+				))}
 			</InspectorTabsSection>
 		</div>
 	);
