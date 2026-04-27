@@ -32,6 +32,7 @@ export type TerminalHandle = {
 	write: (data: string) => void;
 	clear: () => void;
 	dispose: () => void;
+	refit: () => void;
 };
 
 const URL_PATTERN = /https?:\/\/[^\s<>"'`]+/gi;
@@ -330,6 +331,7 @@ export function TerminalOutput({
 					terminal.reset();
 				},
 				dispose: () => terminal.dispose(),
+				refit: () => runFit(),
 			};
 		}
 
