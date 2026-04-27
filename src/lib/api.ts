@@ -700,6 +700,23 @@ export async function getCliStatus(): Promise<CliStatus> {
 	return await invoke<CliStatus>("get_cli_status");
 }
 
+export type HelmorSkillsStatus = {
+	installed: boolean;
+	claude: boolean;
+	codex: boolean;
+	command: string;
+};
+
+export async function getHelmorSkillsStatus(): Promise<HelmorSkillsStatus> {
+	try {
+		return await invoke<HelmorSkillsStatus>("get_helmor_skills_status");
+	} catch (error) {
+		throw new Error(
+			describeInvokeError(error, "Unable to load Helmor skills status."),
+		);
+	}
+}
+
 export async function getAppUpdateStatus(): Promise<AppUpdateStatus> {
 	return invoke<AppUpdateStatus>("get_app_update_status");
 }
@@ -724,6 +741,16 @@ export async function listenAppUpdateStatus(
 
 export async function installCli(): Promise<CliStatus> {
 	return await invoke<CliStatus>("install_cli");
+}
+
+export async function installHelmorSkills(): Promise<HelmorSkillsStatus> {
+	try {
+		return await invoke<HelmorSkillsStatus>("install_helmor_skills");
+	} catch (error) {
+		throw new Error(
+			describeInvokeError(error, "Unable to install Helmor skills."),
+		);
+	}
 }
 
 export async function enterOnboardingWindowMode(): Promise<void> {

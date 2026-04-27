@@ -6,6 +6,7 @@ import { CloneFromUrlDialog } from "@/features/navigation/clone-from-url-dialog"
 import {
 	addRepositoryFromLocalPath,
 	cloneRepositoryFromUrl,
+	deleteRepository,
 	enterOnboardingWindowMode,
 	exitOnboardingWindowMode,
 	getAgentLoginStatus,
@@ -36,6 +37,9 @@ export function AppOnboarding({ onComplete }: AppOnboardingProps) {
 		number | null
 	>(null);
 	const [isAddingLocalRepository, setIsAddingLocalRepository] = useState(false);
+	const [removingRepositoryIds, setRemovingRepositoryIds] = useState<
+		Set<string>
+	>(() => new Set());
 	const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
 	const [cloneDefaultDirectory, setCloneDefaultDirectory] = useState<
 		string | null
@@ -82,17 +86,19 @@ export function AppOnboarding({ onComplete }: AppOnboardingProps) {
 
 	const rememberImportedRepository = useCallback(
 		({
+			id,
 			name,
 			source,
 			detail,
 		}: {
+			id: string;
 			name: string;
 			source: ImportedRepository["source"];
 			detail: string;
 		}) => {
 			setImportedRepositories((current) => [
 				{
-					id: `${source}-${Date.now()}-${current.length}`,
+					id,
 					name,
 					source,
 					detail,
@@ -120,8 +126,9 @@ export function AppOnboarding({ onComplete }: AppOnboardingProps) {
 			if (!selectedPath) {
 				return;
 			}
-			await addRepositoryFromLocalPath(selectedPath);
+			const response = await addRepositoryFromLocalPath(selectedPath);
 			rememberImportedRepository({
+				id: response.repositoryId,
 				name: basename(selectedPath),
 				source: "local",
 				detail: selectedPath,
@@ -156,12 +163,13 @@ export function AppOnboarding({ onComplete }: AppOnboardingProps) {
 				setGithubImportProgress(progress);
 			}, 180);
 			try {
-				await cloneRepositoryFromUrl(args);
+				const response = await cloneRepositoryFromUrl(args);
 				window.clearInterval(interval);
 				setGithubImportProgress(100);
 				window.setTimeout(() => setGithubImportProgress(null), 280);
 				setCloneDefaultDirectory(args.cloneDirectory);
 				rememberImportedRepository({
+					id: response.repositoryId,
 					name: repositoryNameFromUrl(args.gitUrl),
 					source: "github",
 					detail: args.gitUrl,
@@ -174,6 +182,27 @@ export function AppOnboarding({ onComplete }: AppOnboardingProps) {
 		},
 		[rememberImportedRepository],
 	);
+
+	const removeImportedRepository = useCallback(async (repoId: string) => {
+		setRepoImportError(null);
+		setRemovingRepositoryIds((current) => new Set(current).add(repoId));
+		try {
+			await deleteRepository(repoId);
+			setImportedRepositories((current) =>
+				current.filter((repo) => repo.id !== repoId),
+			);
+		} catch (error) {
+			setRepoImportError(
+				describeUnknownError(error, "Unable to remove repository."),
+			);
+		} finally {
+			setRemovingRepositoryIds((current) => {
+				const next = new Set(current);
+				next.delete(repoId);
+				return next;
+			});
+		}
+	}, []);
 
 	const completeOnboarding = useCallback(() => {
 		setStep("completeTransition");
@@ -255,9 +284,11 @@ export function AppOnboarding({ onComplete }: AppOnboardingProps) {
 				importedRepositories={importedRepositories}
 				githubImportProgress={githubImportProgress}
 				isAddingLocalRepository={isAddingLocalRepository}
+				removingRepositoryIds={removingRepositoryIds}
 				repoImportError={repoImportError}
 				onAddLocalRepository={addLocalRepository}
 				onOpenCloneDialog={openCloneDialog}
+				onRemoveRepository={removeImportedRepository}
 				onBack={() => {
 					setStep("skills");
 				}}

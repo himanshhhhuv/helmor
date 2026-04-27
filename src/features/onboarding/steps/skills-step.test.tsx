@@ -10,7 +10,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
 	getCliStatus: vi.fn(),
+	getHelmorSkillsStatus: vi.fn(),
 	installCli: vi.fn(),
+	installHelmorSkills: vi.fn(),
 }));
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -18,7 +20,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
 	return {
 		...actual,
 		getCliStatus: apiMocks.getCliStatus,
+		getHelmorSkillsStatus: apiMocks.getHelmorSkillsStatus,
 		installCli: apiMocks.installCli,
+		installHelmorSkills: apiMocks.installHelmorSkills,
 	};
 });
 
@@ -31,7 +35,16 @@ import { SkillsStep } from "./skills-step";
 describe("SkillsStep", () => {
 	beforeEach(() => {
 		apiMocks.getCliStatus.mockReset();
+		apiMocks.getHelmorSkillsStatus.mockReset();
 		apiMocks.installCli.mockReset();
+		apiMocks.installHelmorSkills.mockReset();
+		apiMocks.getHelmorSkillsStatus.mockResolvedValue({
+			installed: false,
+			claude: false,
+			codex: false,
+			command:
+				"npx --yes skills add dohooo/helmor/.codex/skills/helmor-cli -g -s helmor-cli -y --copy -a claude-code -a codex",
+		});
 	});
 
 	afterEach(() => {
@@ -102,5 +115,83 @@ describe("SkillsStep", () => {
 		expect(
 			within(cliItem).queryByRole("button", { name: "Set up" }),
 		).not.toBeInTheDocument();
+	});
+
+	it("installs Helmor skills from the setup item", async () => {
+		const user = userEvent.setup();
+		apiMocks.getCliStatus.mockResolvedValue({
+			installed: true,
+			installPath: "/usr/local/bin/helmor-dev",
+			buildMode: "development",
+			installState: "managed",
+		});
+		apiMocks.installHelmorSkills.mockResolvedValue({
+			installed: true,
+			claude: true,
+			codex: false,
+			command:
+				"npx --yes skills add dohooo/helmor/.codex/skills/helmor-cli -g -s helmor-cli -y --copy -a claude-code",
+		});
+
+		render(
+			<SkillsStep
+				step="skills"
+				onBack={vi.fn()}
+				onNext={vi.fn()}
+				isRoutingImport={false}
+			/>,
+		);
+
+		const skillsItem = screen.getByRole("group", {
+			name: "Helmor Skills (Beta)",
+		});
+
+		await user.click(
+			within(skillsItem).getByRole("button", { name: "Set up" }),
+		);
+
+		await waitFor(() => {
+			expect(apiMocks.installHelmorSkills).toHaveBeenCalledTimes(1);
+		});
+		expect(within(skillsItem).getByText("Ready")).toBeInTheDocument();
+	});
+
+	it("shows the skills setup error and manual command", async () => {
+		const user = userEvent.setup();
+		apiMocks.getCliStatus.mockResolvedValue({
+			installed: true,
+			installPath: "/usr/local/bin/helmor-dev",
+			buildMode: "development",
+			installState: "managed",
+		});
+		apiMocks.installHelmorSkills.mockRejectedValue(
+			new Error("Helmor skills setup failed."),
+		);
+
+		render(
+			<SkillsStep
+				step="skills"
+				onBack={vi.fn()}
+				onNext={vi.fn()}
+				isRoutingImport={false}
+			/>,
+		);
+
+		const skillsItem = screen.getByRole("group", {
+			name: "Helmor Skills (Beta)",
+		});
+
+		await user.click(
+			within(skillsItem).getByRole("button", { name: "Set up" }),
+		);
+
+		await waitFor(() => {
+			expect(
+				within(skillsItem).getByText("Helmor skills setup failed."),
+			).toBeInTheDocument();
+		});
+		expect(
+			within(skillsItem).getByText(/npx --yes skills add/),
+		).toBeInTheDocument();
 	});
 });

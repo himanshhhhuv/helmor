@@ -157,6 +157,21 @@ vi.mock("@tauri-apps/api/core", () => ({
 				return { lastCloneDirectory: null };
 			case "get_data_info":
 				return null;
+			case "get_cli_status":
+				return {
+					installed: false,
+					installPath: null,
+					buildMode: "development",
+					installState: "missing",
+				};
+			case "get_helmor_skills_status":
+				return {
+					installed: false,
+					claude: false,
+					codex: false,
+					command:
+						"npx --yes skills add dohooo/helmor/.codex/skills/helmor-cli -g -s helmor-cli -y --copy -a claude-code -a codex",
+				};
 			case "get_app_update_status":
 				return {
 					stage: "idle",

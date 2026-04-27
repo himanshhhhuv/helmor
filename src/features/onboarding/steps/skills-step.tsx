@@ -8,7 +8,12 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { getCliStatus, installCli } from "@/lib/api";
+import {
+	getCliStatus,
+	getHelmorSkillsStatus,
+	installCli,
+	installHelmorSkills,
+} from "@/lib/api";
 import { SetupItem } from "../components/setup-item";
 import type { OnboardingStep } from "../types";
 
@@ -26,13 +31,23 @@ export function SkillsStep({
 	const [isInstallingCli, setIsInstallingCli] = useState(false);
 	const [cliInstalled, setCliInstalled] = useState(false);
 	const [cliInstallError, setCliInstallError] = useState<string | null>(null);
+	const [isInstallingSkills, setIsInstallingSkills] = useState(false);
+	const [skillsInstalled, setSkillsInstalled] = useState(false);
+	const [skillsInstallError, setSkillsInstallError] = useState<string | null>(
+		null,
+	);
+	const [skillsInstallCommand, setSkillsInstallCommand] = useState<
+		string | null
+	>(null);
 
 	useEffect(() => {
 		let cancelled = false;
-		void getCliStatus()
-			.then((status) => {
+		void Promise.all([getCliStatus(), getHelmorSkillsStatus()])
+			.then(([cliStatus, skillsStatus]) => {
 				if (!cancelled) {
-					setCliInstalled(status.installState === "managed");
+					setCliInstalled(cliStatus.installState === "managed");
+					setSkillsInstalled(skillsStatus.installed);
+					setSkillsInstallCommand(skillsStatus.command);
 				}
 			})
 			.catch(() => {});
@@ -58,6 +73,25 @@ export function SkillsStep({
 			setIsInstallingCli(false);
 		}
 	}, [isInstallingCli]);
+
+	const handleInstallSkills = useCallback(async () => {
+		if (isInstallingSkills) {
+			return;
+		}
+		setIsInstallingSkills(true);
+		setSkillsInstallError(null);
+		try {
+			const status = await installHelmorSkills();
+			setSkillsInstalled(status.installed);
+			setSkillsInstallCommand(status.command);
+			toast("Helmor skills installed.");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			setSkillsInstallError(message);
+		} finally {
+			setIsInstallingSkills(false);
+		}
+	}, [isInstallingSkills]);
 
 	return (
 		<section
@@ -177,7 +211,26 @@ Options:
 					<SetupItem
 						icon={<PackageCheck className="size-5" />}
 						label="Helmor Skills (Beta)"
-						description="Install skills so Helmor can help with more workflows across every workspace."
+						description={
+							<>
+								Install skills so Helmor can help with more workflows across
+								every workspace.
+								{skillsInstallError ? (
+									<span className="mt-1 block text-destructive">
+										{skillsInstallError}
+									</span>
+								) : null}
+								{skillsInstallError && skillsInstallCommand ? (
+									<code className="mt-2 block break-words rounded-md bg-muted px-2 py-1 font-mono text-[11px] leading-4 text-muted-foreground">
+										{skillsInstallCommand}
+									</code>
+								) : null}
+							</>
+						}
+						actionLabel={isInstallingSkills ? "Installing" : "Set up"}
+						onAction={handleInstallSkills}
+						busy={isInstallingSkills}
+						ready={skillsInstalled}
 					/>
 				</div>
 

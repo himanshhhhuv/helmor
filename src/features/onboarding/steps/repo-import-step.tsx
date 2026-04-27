@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Cloud, FolderOpen } from "lucide-react";
+import { ArrowLeft, ArrowRight, Cloud, FolderOpen, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ImportedRepository, OnboardingStep } from "../types";
 
@@ -7,9 +7,11 @@ export function RepoImportStep({
 	importedRepositories,
 	githubImportProgress,
 	isAddingLocalRepository,
+	removingRepositoryIds,
 	repoImportError,
 	onAddLocalRepository,
 	onOpenCloneDialog,
+	onRemoveRepository,
 	onBack,
 	onComplete,
 }: {
@@ -17,9 +19,11 @@ export function RepoImportStep({
 	importedRepositories: ImportedRepository[];
 	githubImportProgress: number | null;
 	isAddingLocalRepository: boolean;
+	removingRepositoryIds: Set<string>;
 	repoImportError: string | null;
 	onAddLocalRepository: () => void;
 	onOpenCloneDialog: () => void;
+	onRemoveRepository: (repoId: string) => void;
 	onBack: () => void;
 	onComplete: () => void;
 }) {
@@ -123,7 +127,17 @@ export function RepoImportStep({
 												{repo.detail}
 											</div>
 										</div>
-										<span className="size-1.5 rounded-full bg-emerald-500" />
+										<button
+											type="button"
+											aria-label={`Remove ${repo.name}`}
+											disabled={removingRepositoryIds.has(repo.id)}
+											onClick={() => {
+												onRemoveRepository(repo.id);
+											}}
+											className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-default disabled:opacity-50"
+										>
+											<X className="size-3.5" />
+										</button>
 									</div>
 								))}
 							</div>

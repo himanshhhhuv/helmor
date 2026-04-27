@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{LazyLock, Mutex};
 
 use anyhow::Context;
@@ -17,6 +19,8 @@ use super::common::{run_blocking, CmdResult};
 // Resizing is restored when onboarding exits.
 const ONBOARDING_WINDOW_WIDTH: f64 = 1300.0;
 const ONBOARDING_WINDOW_HEIGHT: f64 = 810.0;
+const HELMOR_SKILL_NAME: &str = "helmor-cli";
+const HELMOR_SKILL_SOURCE: &str = "dohooo/helmor/.codex/skills/helmor-cli";
 
 static ONBOARDING_WINDOW_STATE: LazyLock<Mutex<HashMap<String, bool>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -51,6 +55,15 @@ pub struct CliStatus {
     pub install_path: Option<String>,
     pub build_mode: String,
     pub install_state: CliInstallState,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelmorSkillsStatus {
+    pub installed: bool,
+    pub claude: bool,
+    pub codex: bool,
+    pub command: String,
 }
 
 /// Where Helmor installs its managed CLI entrypoint on macOS.
@@ -88,6 +101,10 @@ fn cli_install_remediation(cli_binary: &std::path::Path, install_path: &std::pat
 
 fn shell_quote(path: &std::path::Path) -> String {
     format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
+}
+
+fn shell_quote_arg(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn classify_cli_install(
@@ -210,6 +227,101 @@ fn install_cli_symlink(
     }
 }
 
+fn home_dir() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn claude_skills_dir() -> PathBuf {
+    std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".claude"))
+        .join("skills")
+}
+
+fn codex_skills_dir() -> PathBuf {
+    // `skills@1.5.x` installs Codex as a universal agent in the canonical
+    // global skills directory.
+    home_dir().join(".agents").join("skills")
+}
+
+fn skill_exists(base: &Path) -> bool {
+    base.join(HELMOR_SKILL_NAME).join("SKILL.md").is_file()
+}
+
+fn ready_skill_agents(login: &AgentLoginStatus) -> Vec<&'static str> {
+    let mut agents = Vec::new();
+    if login.claude {
+        agents.push("claude-code");
+    }
+    if login.codex {
+        agents.push("codex");
+    }
+    agents
+}
+
+fn helmor_skills_install_args(agents: &[&str]) -> Vec<String> {
+    let mut args = vec![
+        "--yes".to_string(),
+        "skills".to_string(),
+        "add".to_string(),
+        HELMOR_SKILL_SOURCE.to_string(),
+        "-g".to_string(),
+        "-s".to_string(),
+        HELMOR_SKILL_NAME.to_string(),
+        "-y".to_string(),
+        "--copy".to_string(),
+    ];
+    for agent in agents {
+        args.push("-a".to_string());
+        args.push((*agent).to_string());
+    }
+    args
+}
+
+fn helmor_skills_install_command(agents: &[&str]) -> String {
+    let command_agents = if agents.is_empty() {
+        vec!["claude-code", "codex"]
+    } else {
+        agents.to_vec()
+    };
+    std::iter::once("npx".to_string())
+        .chain(helmor_skills_install_args(&command_agents))
+        .map(|arg| shell_quote_arg(&arg))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn helmor_skills_status() -> anyhow::Result<HelmorSkillsStatus> {
+    Ok(helmor_skills_status_for_agents(&ready_skill_agents(
+        &AgentLoginStatus {
+            claude: claude_login_ready(),
+            codex: codex_login_ready(),
+        },
+    )))
+}
+
+fn helmor_skills_status_for_agents(agents: &[&str]) -> HelmorSkillsStatus {
+    let claude = skill_exists(&claude_skills_dir());
+    let codex = skill_exists(&codex_skills_dir());
+    let installed = if agents.is_empty() {
+        claude || codex
+    } else {
+        agents.iter().all(|agent| match *agent {
+            "claude-code" => claude,
+            "codex" => codex,
+            _ => false,
+        })
+    };
+    HelmorSkillsStatus {
+        installed,
+        claude,
+        codex,
+        command: helmor_skills_install_command(agents),
+    }
+}
+
 #[tauri::command]
 pub fn get_cli_status() -> CmdResult<CliStatus> {
     let install_path = cli_install_target();
@@ -226,6 +338,49 @@ pub async fn install_cli() -> CmdResult<CliStatus> {
         let install_path = cli_install_target();
         install_cli_symlink(&cli_binary, &install_path)?;
         Ok(cli_status_for_paths(&install_path, &cli_binary))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_helmor_skills_status() -> CmdResult<HelmorSkillsStatus> {
+    run_blocking(helmor_skills_status).await
+}
+
+#[tauri::command]
+pub async fn install_helmor_skills() -> CmdResult<HelmorSkillsStatus> {
+    run_blocking(|| {
+        let login = AgentLoginStatus {
+            claude: claude_login_ready(),
+            codex: codex_login_ready(),
+        };
+        let agents = ready_skill_agents(&login);
+        let command = helmor_skills_install_command(&agents);
+
+        if agents.is_empty() {
+            anyhow::bail!(
+                "No ready agent was found. Sign in to Claude Code or Codex first, then run:\n  {}",
+                command
+            );
+        }
+
+        let output = Command::new("npx")
+            .args(helmor_skills_install_args(&agents))
+            .output()
+            .with_context(|| format!("Failed to start skills installer. Try:\n  {command}"))?;
+
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!(
+                "Helmor skills setup failed.\n{}\n{}\nFix the error, then run:\n  {}",
+                stdout.trim(),
+                stderr.trim(),
+                command
+            );
+        }
+
+        Ok(helmor_skills_status_for_agents(&agents))
     })
     .await
 }

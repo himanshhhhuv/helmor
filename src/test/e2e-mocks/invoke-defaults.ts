@@ -42,6 +42,19 @@ export const defaultInvokeHandlers: Record<string, InvokeHandler> = {
 	list_agent_model_sections: () => [],
 	get_add_repository_defaults: () => ({ lastCloneDirectory: null }),
 	get_data_info: () => null,
+	get_cli_status: () => ({
+		installed: false,
+		installPath: null,
+		buildMode: "development",
+		installState: "missing",
+	}),
+	get_helmor_skills_status: () => ({
+		installed: false,
+		claude: false,
+		codex: false,
+		command:
+			"npx --yes skills add dohooo/helmor/.codex/skills/helmor-cli -g -s helmor-cli -y --copy -a claude-code -a codex",
+	}),
 	get_app_settings: () => ({}),
 	load_auto_close_action_kinds: () => [],
 	load_auto_close_opt_in_asked: () => [],
