@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1
+
+### Patch Changes
+
+- [`5f57067`](https://github.com/dohooo/helmor/commit/5f570673314ef124e126313acabeeedf97d2c0d2) Thanks [@natllian](https://github.com/natllian)! - Fix a regression on macOS 26 (Tahoe) where scrollbar backgrounds stayed permanently visible in the workspace sidebar, conversation thread, and inspector panels.
+
 ## 0.11.0
 
 ### Minor Changes
