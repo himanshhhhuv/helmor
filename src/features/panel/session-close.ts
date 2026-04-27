@@ -19,6 +19,9 @@ type CloseWorkspaceSessionOptions = {
 	activateAdjacent?: boolean;
 	onSelectSession?: (sessionId: string) => void;
 	onSessionsChanged?: () => void;
+	// Fires after a non-empty session is hidden (recoverable). Empty sessions
+	// are deleted outright, so this callback is not invoked for them.
+	onSessionHidden?: (sessionId: string, workspaceId: string) => void;
 	pushToast?: PushWorkspaceToast;
 };
 
@@ -42,6 +45,7 @@ export async function closeWorkspaceSession({
 	activateAdjacent = false,
 	onSelectSession,
 	onSessionsChanged,
+	onSessionHidden,
 	pushToast,
 }: CloseWorkspaceSessionOptions): Promise<boolean> {
 	const targetSession =
@@ -107,6 +111,7 @@ export async function closeWorkspaceSession({
 			await deleteSession(sessionId);
 		} else {
 			await hideSession(sessionId);
+			onSessionHidden?.(sessionId, workspace.id);
 		}
 
 		if (adjacentSessionId) {

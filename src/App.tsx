@@ -2,6 +2,7 @@ import "./App.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
 	Check,
 	ChevronDown,
@@ -86,6 +87,7 @@ import {
 	prewarmSlashCommandsForWorkspace,
 	syncWorkspaceWithTargetBranch,
 	triggerWorkspaceFetch,
+	unhideSession,
 	type WorkspaceDetail,
 	type WorkspaceGroup,
 	type WorkspaceSessionSummary,
@@ -644,6 +646,9 @@ function AppShell({
 		setSidebarCollapsed(!zenActive);
 		setInspectorCollapsed(!zenActive);
 	}, [inspectorCollapsed, setSidebarCollapsed, sidebarCollapsed]);
+	const handleOpenModelPicker = useCallback(() => {
+		window.dispatchEvent(new Event("helmor:open-model-picker"));
+	}, []);
 	const handlePullLatest = useCallback(async () => {
 		if (!selectedWorkspaceId) return;
 		try {
@@ -784,6 +789,18 @@ function AppShell({
 		enabled: workspaceForgeQueriesEnabled,
 	});
 	const workspaceChangeRequest = workspaceChangeRequestQuery.data ?? null;
+	const pullRequestUrl =
+		workspaceChangeRequest?.url || selectedWorkspaceDetail?.prUrl || null;
+	const handleOpenPullRequest = useCallback(() => {
+		if (!pullRequestUrl) return;
+		void openUrl(pullRequestUrl).catch((error) => {
+			pushWorkspaceToast(
+				error instanceof Error ? error.message : String(error),
+				"Unable to open pull request",
+				"destructive",
+			);
+		});
+	}, [pullRequestUrl, pushWorkspaceToast]);
 
 	const workspaceForgeActionStatusQuery = useQuery({
 		...workspaceForgeActionStatusQueryOptions(
@@ -1560,13 +1577,66 @@ function AppShell({
 		};
 	}, [queryClient]);
 
+	// Stack of recently hidden sessions for "Reopen closed session". LIFO so
+	// repeated invocations walk back through history. Empty (deleted) sessions
+	// are not tracked because the backend can't restore them.
+	const recentlyClosedSessionsRef = useRef<
+		{ sessionId: string; workspaceId: string }[]
+	>([]);
+	const handleSessionHidden = useCallback(
+		(sessionId: string, workspaceId: string) => {
+			recentlyClosedSessionsRef.current = [
+				{ sessionId, workspaceId },
+				...recentlyClosedSessionsRef.current.filter(
+					(entry) => entry.sessionId !== sessionId,
+				),
+			].slice(0, 20);
+		},
+		[],
+	);
+
 	const { requestClose: requestCloseSession, dialogNode: closeConfirmDialog } =
 		useConfirmSessionClose({
 			sendingSessionIds,
 			onSelectSession: handleSelectSession,
+			onSessionHidden: handleSessionHidden,
 			pushToast: pushWorkspaceToast,
 			queryClient,
 		});
+
+	const handleReopenClosedSession = useCallback(async () => {
+		const next = recentlyClosedSessionsRef.current[0];
+		if (!next) return;
+		recentlyClosedSessionsRef.current =
+			recentlyClosedSessionsRef.current.slice(1);
+		try {
+			await unhideSession(next.sessionId);
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: helmorQueryKeys.workspaceDetail(next.workspaceId),
+				}),
+				queryClient.invalidateQueries({
+					queryKey: helmorQueryKeys.workspaceSessions(next.workspaceId),
+				}),
+				queryClient.invalidateQueries({
+					queryKey: helmorQueryKeys.workspaceGroups,
+				}),
+			]);
+			handleSelectWorkspace(next.workspaceId);
+			handleSelectSession(next.sessionId);
+		} catch (error) {
+			pushWorkspaceToast(
+				error instanceof Error ? error.message : String(error),
+				"Unable to reopen session",
+				"destructive",
+			);
+		}
+	}, [
+		handleSelectSession,
+		handleSelectWorkspace,
+		pushWorkspaceToast,
+		queryClient,
+	]);
 
 	const handleCloseSelectedSession = useCallback(async () => {
 		const currentSession = getCloseableCurrentSession();
@@ -1763,6 +1833,11 @@ function AppShell({
 				enabled: isIdentityConnected && workspaceViewMode === "conversation",
 			},
 			{
+				id: "session.reopenClosed" as const,
+				callback: () => void handleReopenClosedSession(),
+				enabled: isIdentityConnected && workspaceViewMode === "conversation",
+			},
+			{
 				id: "script.run" as const,
 				callback: () => window.dispatchEvent(new Event("helmor:run-script")),
 				enabled: isIdentityConnected,
@@ -1816,9 +1891,22 @@ function AppShell({
 				enabled: isIdentityConnected && workspaceViewMode === "conversation",
 			},
 			{
+				id: "action.openPullRequest" as const,
+				callback: handleOpenPullRequest,
+				enabled:
+					isIdentityConnected &&
+					workspaceViewMode === "conversation" &&
+					Boolean(pullRequestUrl),
+			},
+			{
 				id: "composer.focus" as const,
 				callback: () =>
 					window.dispatchEvent(new Event("helmor:focus-composer")),
+				enabled: isIdentityConnected && workspaceViewMode === "conversation",
+			},
+			{
+				id: "composer.openModelPicker" as const,
+				callback: handleOpenModelPicker,
 				enabled: isIdentityConnected && workspaceViewMode === "conversation",
 			},
 			{
@@ -1849,13 +1937,17 @@ function AppShell({
 			handleInspectorCommitAction,
 			handleNavigateSessions,
 			handleNavigateWorkspaces,
+			handleOpenModelPicker,
 			handleOpenPreferredEditor,
+			handleOpenPullRequest,
 			handleOpenSettings,
 			handlePullLatest,
+			handleReopenClosedSession,
 			handleToggleTheme,
 			handleToggleZenMode,
 			isIdentityConnected,
 			preferredEditor,
+			pullRequestUrl,
 			selectedWorkspaceId,
 			setInspectorCollapsed,
 			setSidebarCollapsed,

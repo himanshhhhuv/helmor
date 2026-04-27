@@ -114,6 +114,10 @@ export function GitSectionHeader({
 	const commitShortcut = commitShortcutId
 		? getShortcut(settings.shortcuts, commitShortcutId)
 		: null;
+	const openChangeRequestShortcut = getShortcut(
+		settings.shortcuts,
+		"action.openPullRequest",
+	);
 
 	const showShimmer = useMinDisplayDuration(
 		isRefreshing,
@@ -289,15 +293,21 @@ export function GitSectionHeader({
 							</Button>
 						);
 						const tooltipText = changeRequest.title?.trim();
-						if (!tooltipText) return button;
+						if (!tooltipText && !openChangeRequestShortcut) return button;
+						const openLabel = isMergeRequest
+							? "Open merge request"
+							: "Open pull request";
 						return (
 							<Tooltip>
 								<TooltipTrigger asChild>{button}</TooltipTrigger>
 								<TooltipContent
 									side="bottom"
-									className="max-w-[320px] truncate rounded-md px-2 py-1 text-[12px] leading-tight"
+									className="flex max-w-[320px] items-center gap-2 rounded-md px-2 py-1 text-[12px] leading-tight"
 								>
-									{tooltipText}
+									<span className="truncate">{tooltipText || openLabel}</span>
+									{openChangeRequestShortcut ? (
+										<InlineShortcutDisplay hotkey={openChangeRequestShortcut} />
+									) : null}
 								</TooltipContent>
 							</Tooltip>
 						);
