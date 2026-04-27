@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.11.0
+
+### Minor Changes
+
+- [`378b521`](https://github.com/dohooo/helmor/commit/378b5214fffa5717ee57de0889bee491acd8cfe0) Thanks [@natllian](https://github.com/natllian)! - Add a Terminal tab to each workspace's inspector for running interactive shells
+
+- [#274](https://github.com/dohooo/helmor/pull/274) [`bb5432d`](https://github.com/dohooo/helmor/commit/bb5432da5e955d9088828d0967a67e49eb750b0a) Thanks [@natllian](https://github.com/natllian)! - Add a sidebar workspace hover card that surfaces a workspace's repo, branch, git status, and recent activity at a glance, with a live markdown preview of the AI's current output and an elapsed timer for workspaces that are actively running.
+
+### Patch Changes
+
+- [#269](https://github.com/dohooo/helmor/pull/269) [`f3643b8`](https://github.com/dohooo/helmor/commit/f3643b8293f89bd7ca281051b10e73e997fd90f5) Thanks [@natllian](https://github.com/natllian)! - Fix the experimental Install CLI action on macOS so it pops the standard administrator authorization prompt (password or Touch ID) when `/usr/local/bin` needs root, instead of silently failing with a permission-denied error.
+
+- [#273](https://github.com/dohooo/helmor/pull/273) [`b50af02`](https://github.com/dohooo/helmor/commit/b50af027091a3453d6b5c9869af8f8e05d25c443) Thanks [@natllian](https://github.com/natllian)! - Polish how Helmor sends prompts to the agent on your behalf:
+
+  - Stop showing your "general preferences" preamble inside your own chat bubbles. The preamble is still delivered to the agent on the wire, but it no longer appears in the visible message or gets persisted with the user prompt — so reloading a session shows only what you actually typed.
+  - Substitute the workspace's real git remote name into the Create PR / Commit and push / Resolve conflicts prompts (e.g. `git push -u origin HEAD` instead of `git push -u <remote> HEAD`) so the agent gets a concrete command instead of a placeholder.
+
+- [#270](https://github.com/dohooo/helmor/pull/270) [`7d70131`](https://github.com/dohooo/helmor/commit/7d701317b05f5cbfd10716e946ace80eb2996aad) Thanks [@natllian](https://github.com/natllian)! - Collapse all tool calls in the chat thread by default.
+
+- [#271](https://github.com/dohooo/helmor/pull/271) [`2709b07`](https://github.com/dohooo/helmor/commit/2709b07c334a36ad52b729fc0c7b4c343e9e4bdc) Thanks [@natllian](https://github.com/natllian)! - A couple of small polish fixes:
+  - Stop the GitHub "Connect" prompt from flickering on flaky networks: the gh / glab status check now tolerates transient blips for up to 10 minutes and no longer mistakes upstream "401 Service Unavailable" / "unauthenticated upstream" responses for a real logout.
+  - Slightly darken the composer placeholder and the auto/plan-mode pill at rest so they stay legible instead of fading into the background.
+
 ## 0.10.0
 
 ### Minor Changes
