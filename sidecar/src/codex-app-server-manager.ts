@@ -36,6 +36,12 @@ import {
 
 const CODEX_BIN_PATH = process.env.HELMOR_CODEX_BIN_PATH || "codex";
 
+/** How long after a "Reconnecting…" stderr line we suppress
+ *  {method:"error"} notifications from Codex. Covers a typical
+ *  Azure OpenAI mini-outage; if the upstream is genuinely down for
+ *  longer, the next stderr line resets the window. */
+const RETRY_SUPPRESSION_MS = 30_000;
+
 const HELMOR_CLIENT_INFO = {
 	clientInfo: {
 		name: "helmor_desktop",
@@ -95,6 +101,12 @@ interface AppServerContext {
 	notificationGate: Promise<void> | null;
 	/** Last send's model id; Codex usage notifications omit it. */
 	lastSentModel: string;
+	/** Wall-clock ms of the most recent "Reconnecting…" line on the
+	 *  Codex child process's stderr. Used to suppress the transient
+	 *  {method:"error"} notifications that Codex emits during its own
+	 *  SSE retry loop — Codex will recover on its own, so terminating
+	 *  the turn would be premature. */
+	lastRetryAt: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -309,6 +321,19 @@ export class CodexAppServerManager implements SessionManager {
 							: undefined;
 					const msg =
 						typeof nested === "string" ? nested : "Unknown Codex error";
+					// Suppress transient errors that arrive inside the SSE
+					// retry window — Codex CLI will keep retrying on its own
+					// (it printed "Reconnecting…" on stderr within the last
+					// RETRY_SUPPRESSION_MS). Letting these propagate would
+					// kill the turn while recovery is still in progress.
+					const lastRetry = ctx.lastRetryAt ?? 0;
+					if (Date.now() - lastRetry < RETRY_SUPPRESSION_MS) {
+						logger.info(
+							"suppressing Codex error inside retry window; awaiting recovery",
+							{ requestId, msg, msSinceRetry: Date.now() - lastRetry },
+						);
+						return;
+					}
 					emitter.error(requestId, msg);
 					ctx.activeTurnId = null;
 					ctx.turnResolve?.();
@@ -750,6 +775,12 @@ export class CodexAppServerManager implements SessionManager {
 		const existing = this.sessions.get(sessionId);
 		if (existing && !existing.server.killed) return existing;
 
+		// Forward-reference holder so the `onRetry` closure can reach the
+		// context that's constructed below — the callback only fires once
+		// the CodexAppServer is running, by which point `ctxRef.current`
+		// has been populated.
+		const ctxRef: { current: AppServerContext | null } = { current: null };
+
 		const server = new CodexAppServer({
 			binaryPath: CODEX_BIN_PATH,
 			cwd,
@@ -760,6 +791,25 @@ export class CodexAppServerManager implements SessionManager {
 			},
 			onError: (err) => {
 				logger.error("codex app-server error", errorDetails(err));
+			},
+			onRetry: () => {
+				const c = ctxRef.current;
+				if (!c) return;
+				c.lastRetryAt = Date.now();
+				// Pulse a synthetic heartbeat so Rust's 45s watchdog doesn't
+				// declare the sidecar dead while Codex is silently retrying
+				// against an upstream provider (e.g. Azure OpenAI mini-outage).
+				if (c.activeRequestId && c.activeEmitter) {
+					try {
+						c.activeEmitter.heartbeat(c.activeRequestId);
+					} catch {
+						// stdout closed — caller will notice
+					}
+				}
+				logger.debug("codex retry detected; suppression window armed", {
+					sessionId,
+					activeRequestId: c.activeRequestId,
+				});
 			},
 		});
 
@@ -820,9 +870,11 @@ export class CodexAppServerManager implements SessionManager {
 			activeEmitter: null,
 			notificationGate: null,
 			lastSentModel: model ?? "",
+			lastRetryAt: null,
 		};
 
 		this.sessions.set(sessionId, ctx);
+		ctxRef.current = ctx;
 		return ctx;
 	}
 }

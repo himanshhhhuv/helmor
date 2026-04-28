@@ -54,6 +54,12 @@ export interface CodexAppServerOptions {
 	onRequest: OnRequest;
 	onExit: OnExit;
 	onError: OnError;
+	/** Fired when Codex's own SSE retry loop emits a "Reconnecting…"
+	 *  line on stderr. The manager uses this to (a) pulse a synthetic
+	 *  heartbeat keeping Rust's 45s watchdog satisfied, and (b) record
+	 *  a recency timestamp so a transient {method:"error"} notification
+	 *  arriving inside the retry window can be suppressed. */
+	onRetry?: () => void;
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
@@ -97,9 +103,15 @@ export class CodexAppServer {
 		this.output.on("line", (line) => this.handleLine(line));
 
 		this.child.stderr.on("data", (chunk: Buffer) => {
-			logger.debug("codex app-server stderr", {
-				data: chunk.toString().trim(),
-			});
+			const text = chunk.toString();
+			logger.debug("codex app-server stderr", { data: text.trim() });
+			if (/Reconnecting/i.test(text)) {
+				try {
+					opts.onRetry?.();
+				} catch (err) {
+					logger.error("onRetry handler threw", { err: String(err) });
+				}
+			}
 		});
 
 		this.child.on("error", (err) => {
