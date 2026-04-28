@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.4
+
+### Patch Changes
+
+- [#284](https://github.com/dohooo/helmor/pull/284) [`8e5b731`](https://github.com/dohooo/helmor/commit/8e5b731c5f1effd79bb548788c9627e8582425dc) Thanks [@natllian](https://github.com/natllian)! - Restore the Conductor migration path during onboarding and keep its import screen matched to the current app theme.
+
 ## 0.11.3
 
 ### Patch Changes
