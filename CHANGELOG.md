@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.11.2
+
+### Patch Changes
+
+- [#279](https://github.com/dohooo/helmor/pull/279) [`d1f68d5`](https://github.com/dohooo/helmor/commit/d1f68d522ce9fba4069274feb5d16f6071e4890e) Thanks [@natllian](https://github.com/natllian)! - Loosen up keyboard shortcuts and the inspector tabs panel:
+
+  - Make global shortcuts (Cmd+R run script, sidebar/zen toggles, workspace navigation, commit/PR actions) fire from anywhere in the window instead of silently doing nothing when focus is in the file editor.
+  - Cmd+T while looking at script output now opens a new terminal instead of a new chat session.
+  - Any inspector tab — Setup, Run, a terminal tab, or the "+" button — now opens the tabs panel when clicked, and collapses it when you click the already-active tab.
+
+- [#281](https://github.com/dohooo/helmor/pull/281) [`56a308c`](https://github.com/dohooo/helmor/commit/56a308cd90f56217432ed86a55bc1003166b3179) Thanks [@natllian](https://github.com/natllian)! - A round of CLI auth and UI polish:
+  - Pin Settings → Account CLI rows to a fixed height so they stop jumping between Connect / Ready / Error.
+  - Edge-detect forge `Unauthenticated` in the backend so the 60s poll stops republishing on every tick, and fan it out to the Account CLI cache so it can't go stale.
+  - Reflect external GitHub sign-in / sign-out in Settings → Account via the shared identity hook.
+  - Surface CLI command errors (e.g. `gh` not on PATH) immediately during auth instead of waiting out the full poll budget.
+  - Make the inspector Connect button actually re-authenticate when the remote disagrees with the local CLI snapshot, instead of toasting a misleading "connected".
+  - Replace the editor close-button tooltip with an inline `Esc` shortcut next to the X.
+  - Fall back to `logo.svg` / `public/logo.svg` when picking a workspace repo icon.
+
 ## 0.11.1
 
 ### Patch Changes
