@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.2
+
+### Patch Changes
+
+- [#309](https://github.com/dohooo/helmor/pull/309) [`8a88fdb`](https://github.com/dohooo/helmor/commit/8a88fdbb32b798c9b6c3ceefd42e94d1afec7a58) Thanks [@natllian](https://github.com/natllian)! - Add DeepSeek as a built-in Claude Code custom provider with DeepSeek V4 Pro 1M and DeepSeek V4 Flash model options.
+
+- [#312](https://github.com/dohooo/helmor/pull/312) [`ee123bd`](https://github.com/dohooo/helmor/commit/ee123bd01411e28dfd7a2e69988463b0826f7c34) Thanks [@natllian](https://github.com/natllian)! - Fix chat shortcuts (new session, close session, prev/next session) being misrouted to the terminal after clicking from the terminal into the chat column.
+
 ## 0.12.1
 
 ### Patch Changes
