@@ -1,0 +1,111 @@
+/* Common header component styles */
+
+.site-header {
+	position: sticky;
+	top: 0;
+	z-index: 100;
+}
+
+.header-rail {
+	height: 48px;
+	padding: 0 20px;
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	border-bottom: 1px solid var(--border);
+	background: var(--background);
+	font-size: 12px;
+	backdrop-filter: blur(8px);
+}
+
+.header-rail .brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-weight: 600;
+	font-size: 13px;
+	letter-spacing: -0.005em;
+	color: var(--foreground);
+	text-decoration: none;
+}
+
+.header-rail .brand img {
+	width: 18px;
+	height: 18px;
+}
+
+/* Both logo variants ship in the DOM; the <html> theme class picks one */
+html.light .brand-mark-dark,
+html.dark .brand-mark-light {
+	display: none;
+}
+
+.header-rail .version {
+	font-family: var(--font-mono);
+	color: var(--muted-foreground);
+	font-size: 11px;
+	padding: 2px 6px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+}
+
+.header-rail .spacer {
+	flex: 1;
+}
+
+.header-rail .nav-links {
+	display: flex;
+	gap: 2px;
+}
+
+.header-rail .nav-links a {
+	padding: 6px 10px;
+	color: var(--muted-foreground);
+	border-radius: var(--radius-sm);
+	text-decoration: none;
+	transition:
+		color var(--motion-fast),
+		background var(--motion-fast);
+}
+
+.header-rail .nav-links a:hover {
+	color: var(--foreground);
+	background: var(--muted);
+}
+
+.header-rail .theme-toggle {
+	display: inline-flex;
+	gap: 2px;
+	padding: 2px;
+	background: var(--muted);
+	border: 1px solid var(--border);
+	border-radius: 7px;
+}
+
+.header-rail .theme-toggle button {
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	width: 24px;
+	height: 20px;
+	border-radius: 4px;
+	color: var(--muted-foreground);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition:
+		color var(--motion-fast),
+		background var(--motion-fast);
+}
+
+.header-rail .theme-toggle button.active {
+	background: var(--card);
+	color: var(--foreground);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+	.header-rail .nav-links {
+		display: none;
+	}
+}

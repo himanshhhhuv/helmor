@@ -1,12 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { RepoData } from "@/lib/github";
+import { Header } from "./components/header";
 import { DownloadDropdown } from "./download-dropdown";
 
-type Theme = "light" | "dark";
-
-const STORAGE_KEY = "helmor-marketing-theme";
 // Keep the product preview tilt subtle so it reads as ambient polish.
 const MAX_TILT_DEG = 4;
 // Atmospheric FX — backlit dust mote count. 18 is the sweet spot from the
@@ -14,74 +12,18 @@ const MAX_TILT_DEG = 4;
 // into confetti or stealing focus from the smoke plumes.
 const DUST_COUNT = 18;
 
+/** Format numbers with k/M suffix: 1234 → "1.2k", 1234567 → "1.2M" */
+function formatNumber(num: number): string {
+	if (num >= 1000000) {
+		return `${(num / 1000000).toFixed(1)}M`;
+	}
+	if (num >= 1000) {
+		return `${(num / 1000).toFixed(1)}k`;
+	}
+	return num.toString();
+}
+
 export function MarketingShell({ data }: { data: RepoData }) {
-	// SSR default mirrors <html class="dark"> in layout; a useEffect reconciles
-	// against localStorage to avoid hydration mismatch.
-	const [theme, setTheme] = useState<Theme>("dark");
-
-	// Mount: read persisted theme + sync <html class>. Matches the
-	// pre-hydration bootstrap in layout.tsx: stored LS > system prefs > dark.
-	useEffect(() => {
-		let initial: Theme | null = null;
-		try {
-			const raw = localStorage.getItem(STORAGE_KEY);
-			if (raw) {
-				const parsed = JSON.parse(raw);
-				if (parsed === "light" || parsed === "dark") initial = parsed;
-			}
-		} catch {
-			/* noop */
-		}
-		if (!initial) {
-			initial = window.matchMedia("(prefers-color-scheme: light)").matches
-				? "light"
-				: "dark";
-		}
-		setTheme(initial);
-	}, []);
-
-	// Apply theme changes. First run is skipped: the pre-hydration bootstrap
-	// in layout.tsx has already set <html class>, and the mount-theme-init
-	// useEffect above reconciles React state. Without this guard, the initial
-	// state ("dark" on SSR) would briefly revert the bootstrap's class before
-	// the init's setTheme re-renders us back — a visible flash, plus it would
-	// kick off the .shot.light-layer clip-path transition.
-	const hasMountedRef = useRef(false);
-	useEffect(() => {
-		if (!hasMountedRef.current) {
-			hasMountedRef.current = true;
-			return;
-		}
-		const root = document.documentElement;
-		root.classList.toggle("dark", theme === "dark");
-		root.classList.toggle("light", theme === "light");
-		try {
-			localStorage.setItem(STORAGE_KEY, JSON.stringify(theme));
-		} catch {
-			/* noop */
-		}
-	}, [theme]);
-
-	const toggleTheme = useCallback((mode: Theme) => setTheme(mode), []);
-
-	// `T` / `t` toggles the theme globally.
-	useEffect(() => {
-		const onKey = (e: KeyboardEvent) => {
-			const target = e.target as HTMLElement | null;
-			if (
-				target &&
-				(target.tagName === "INPUT" || target.tagName === "TEXTAREA")
-			) {
-				return;
-			}
-			if (e.key === "t" || e.key === "T") {
-				setTheme((prev) => (prev === "dark" ? "light" : "dark"));
-			}
-		};
-		document.addEventListener("keydown", onKey);
-		return () => document.removeEventListener("keydown", onKey);
-	}, []);
-
 	// 3D tilt + atmospheric smoke swirl — cursor-driven. Tilt and smoke swirl
 	// are gated on prefers-reduced-motion.
 	const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -210,56 +152,7 @@ export function MarketingShell({ data }: { data: RepoData }) {
 
 	return (
 		<div className="page">
-			{/* ============== TOP RAIL ============== */}
-			<div className="rail">
-				<a className="brand" href="/">
-					{/* Both logo variants render; CSS on <html class> picks the right
-					 * one. Keeps the first paint correct for system-light visitors
-					 * without a React-driven src swap flashing the dark logo. */}
-					{/* eslint-disable-next-line @next/next/no-img-element */}
-					<img
-						className="brand-mark-dark"
-						src="/helmor-logo-dark.svg"
-						alt=""
-						aria-hidden="true"
-					/>
-					{/* eslint-disable-next-line @next/next/no-img-element */}
-					<img
-						className="brand-mark-light"
-						src="/helmor-logo-light.svg"
-						alt=""
-						aria-hidden="true"
-					/>
-					Helmor
-				</a>
-				<span className="version">{data.version}</span>
-				<div className="links">
-					<a href={`${data.repoUrl}#readme`}>Docs</a>
-					<a href={data.releasesUrl}>Changelog</a>
-					<a href={`${data.repoUrl}/discussions`}>Discussions</a>
-				</div>
-				<div className="spacer" />
-				<div className="theme-toggle" role="tablist" aria-label="Theme">
-					<button
-						type="button"
-						aria-label="Light"
-						aria-pressed={theme === "light"}
-						className={theme === "light" ? "active" : undefined}
-						onClick={() => toggleTheme("light")}
-					>
-						<SunIcon />
-					</button>
-					<button
-						type="button"
-						aria-label="Dark"
-						aria-pressed={theme === "dark"}
-						className={theme === "dark" ? "active" : undefined}
-						onClick={() => toggleTheme("dark")}
-					>
-						<MoonIcon />
-					</button>
-				</div>
-			</div>
+			<Header currentVersion={data.version} showVersion={true} />
 
 			{/* ============== STAGE ============== */}
 			<div className="stage">
@@ -598,6 +491,36 @@ export function MarketingShell({ data }: { data: RepoData }) {
 						</a>
 					</div>
 
+					<div className="github-stats">
+						<a
+							className="stat-item"
+							href={`${data.repoUrl}/stargazers`}
+							title="GitHub Stars"
+						>
+							<StarIcon />
+							<span className="stat-value">{formatNumber(data.stars)}</span>
+							<span className="stat-label">stars</span>
+						</a>
+						<a
+							className="stat-item"
+							href={`${data.repoUrl}/forks`}
+							title="GitHub Forks"
+						>
+							<ForkIcon />
+							<span className="stat-value">{formatNumber(data.forks)}</span>
+							<span className="stat-label">forks</span>
+						</a>
+						<a
+							className="stat-item"
+							href={`${data.repoUrl}/watchers`}
+							title="GitHub Watchers"
+						>
+							<EyeIcon />
+							<span className="stat-value">{formatNumber(data.watchers)}</span>
+							<span className="stat-label">watchers</span>
+						</a>
+					</div>
+
 					<div className="meta">
 						<span>
 							<span className="ok">●</span> {data.branch} · {data.shortSha}
@@ -641,43 +564,6 @@ export function MarketingShell({ data }: { data: RepoData }) {
 
 // ---------- Inline SVG icons (lucide-equivalent, no runtime dep) ----------
 
-function SunIcon() {
-	return (
-		<svg
-			width="12"
-			height="12"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="2"
-			strokeLinecap="round"
-			strokeLinejoin="round"
-			aria-hidden="true"
-		>
-			<circle cx="12" cy="12" r="4" />
-			<path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-		</svg>
-	);
-}
-
-function MoonIcon() {
-	return (
-		<svg
-			width="12"
-			height="12"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="2"
-			strokeLinecap="round"
-			strokeLinejoin="round"
-			aria-hidden="true"
-		>
-			<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-		</svg>
-	);
-}
-
 function GithubIcon() {
 	return (
 		<svg
@@ -688,6 +574,65 @@ function GithubIcon() {
 			aria-hidden="true"
 		>
 			<path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.93c.58.11.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.68-1.28-1.68-1.04-.72.08-.7.08-.7 1.16.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.18-3.08-.12-.29-.51-1.47.11-3.06 0 0 .97-.31 3.18 1.17a11 11 0 0 1 5.78 0c2.21-1.48 3.17-1.17 3.17-1.17.63 1.59.23 2.77.12 3.06.74.8 1.18 1.82 1.18 3.08 0 4.41-2.7 5.39-5.27 5.67.42.36.78 1.05.78 2.13v3.15c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z" />
+		</svg>
+	);
+}
+
+function StarIcon() {
+	return (
+		<svg
+			width="14"
+			height="14"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="2"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+		>
+			<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+		</svg>
+	);
+}
+
+function ForkIcon() {
+	return (
+		<svg
+			width="14"
+			height="14"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="2"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+		>
+			<circle cx="12" cy="18" r="3" />
+			<circle cx="6" cy="6" r="3" />
+			<circle cx="18" cy="6" r="3" />
+			<path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9" />
+			<path d="M12 12v3" />
+		</svg>
+	);
+}
+
+function EyeIcon() {
+	return (
+		<svg
+			width="14"
+			height="14"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="2"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+		>
+			<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+			<circle cx="12" cy="12" r="3" />
 		</svg>
 	);
 }

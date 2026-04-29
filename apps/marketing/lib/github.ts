@@ -35,6 +35,10 @@ const FALLBACK = {
 	intelDmgUrl: `https://github.com/${REPO}/releases/latest`,
 	intelDmgSize: 72037171, // 68.7 MB
 	signedAndNotarized: true,
+	stars: 0,
+	forks: 0,
+	watchers: 0,
+	openIssues: 0,
 } as const;
 
 export type RepoData = {
@@ -51,6 +55,11 @@ export type RepoData = {
 	intelDmgUrl: string;
 	intelDmgSize: number;
 	signedAndNotarized: boolean;
+	// GitHub stats
+	stars: number;
+	forks: number;
+	watchers: number;
+	openIssues: number;
 };
 
 type Asset = {
@@ -58,17 +67,22 @@ type Asset = {
 	browser_download_url: string;
 	size: number;
 };
-type Release = {
+export type Release = {
 	tag_name: string;
 	name?: string | null;
 	html_url: string;
 	body?: string | null;
 	assets?: Asset[];
+	published_at: string;
 };
 type Commit = { sha: string };
 type Repo = {
 	default_branch: string;
 	license: { spdx_id: string | null } | null;
+	stargazers_count: number;
+	forks_count: number;
+	watchers_count: number;
+	open_issues_count: number;
 };
 
 async function ghFetch<T>(path: string): Promise<T | null> {
@@ -107,6 +121,10 @@ export async function getRepoData(): Promise<RepoData> {
 
 	const branch = repo?.default_branch ?? FALLBACK.branch;
 	const license = repo?.license?.spdx_id ?? FALLBACK.license;
+	const stars = repo?.stargazers_count ?? FALLBACK.stars;
+	const forks = repo?.forks_count ?? FALLBACK.forks;
+	const watchers = repo?.watchers_count ?? FALLBACK.watchers;
+	const openIssues = repo?.open_issues_count ?? FALLBACK.openIssues;
 
 	// commits/{branch} must run after we know the branch name — cheap
 	// sequential call, still inside the same revalidation window.
@@ -142,6 +160,10 @@ export async function getRepoData(): Promise<RepoData> {
 		intelDmgUrl: intel?.browser_download_url ?? FALLBACK.intelDmgUrl,
 		intelDmgSize: intel?.size ?? FALLBACK.intelDmgSize,
 		signedAndNotarized,
+		stars,
+		forks,
+		watchers,
+		openIssues,
 	};
 }
 
@@ -156,4 +178,12 @@ function pickDmgAsset(
 		if (archPattern.test(a.name)) return a;
 	}
 	return null;
+}
+
+/** Fetch all GitHub releases for the changelog page */
+export async function getAllReleases(): Promise<Release[]> {
+	const releases = await ghFetch<Release[]>(
+		`/repos/${REPO}/releases?per_page=50`,
+	);
+	return releases ?? [];
 }
