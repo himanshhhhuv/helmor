@@ -384,6 +384,46 @@ pub(super) fn stream_via_sidecar(
                 continue;
             }
 
+            // Older sidecars may forward Codex app-server retry notices as
+            // `type:error` events while preserving the structured
+            // `willRetry=true` bit. Treat only those explicit retry markers as
+            // liveness pings; message-only errors are terminal and must not be
+            // converted into a successful `end` if the sidecar's finally block
+            // emits one immediately after.
+            if model_copy.provider == "codex"
+                && event.event_type() == "error"
+                && bridges::is_retryable_sidecar_error(&event.raw)
+            {
+                heartbeat_count += 1;
+                let message = event
+                    .raw
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("retryable sidecar error");
+                tracing::debug!(rid = %rid, heartbeat_count, "Forwarding retryable sidecar error as notice: {message}");
+
+                if let Some(pipeline_state) = pipeline.as_mut() {
+                    let notice = bridges::retry_notice_event_from_error(&event.raw);
+                    let line = serde_json::to_string(&notice).unwrap_or_default();
+                    let emit = pipeline_state.push_event(&notice, &line);
+                    match turn_session.handle_stream_event(emit) {
+                        Ok(actions) => {
+                            for action in actions {
+                                actions::apply_action(action, &apply_ctx);
+                            }
+                        }
+                        Err(err) => {
+                            tracing::error!(
+                                rid = %rid,
+                                error = ?err,
+                                "retry_notice transition rejected",
+                            );
+                        }
+                    }
+                }
+                continue;
+            }
+
             event_count += 1;
 
             // Claude's authoritative session_id comes only from `system.init`.
