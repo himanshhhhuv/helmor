@@ -437,4 +437,94 @@ describe("CodexAppServerManager", () => {
 			events.find((e) => e.type === "contextUsageUpdated"),
 		).toBeUndefined();
 	});
+
+	test("suppresses app-server errors when protocol says Codex will retry", async () => {
+		const manager = new CodexAppServerManager();
+		const events: Array<Record<string, unknown>> = [];
+		const capturingEmitter = createSidecarEmitter((event) => {
+			events.push(event as Record<string, unknown>);
+		});
+
+		serverState.beforeTurnCompleted = () => {
+			serverState.onNotification?.({
+				method: "error",
+				params: {
+					error: { message: "stream interrupted" },
+					willRetry: true,
+					threadId: "thread-1",
+					turnId: "turn-1",
+				},
+			});
+		};
+
+		await manager.sendMessage(
+			"REQ-retryable-error",
+			{
+				sessionId: "session-retryable-error",
+				prompt: "hi",
+				model: "gpt-5.4",
+				cwd: "/tmp",
+				resume: undefined,
+				permissionMode: undefined,
+				effortLevel: "medium",
+				fastMode: false,
+			},
+			capturingEmitter,
+		);
+
+		expect(events.find((e) => e.type === "error")).toBeUndefined();
+		expect(events).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: "REQ-retryable-error",
+					type: "heartbeat",
+				}),
+			]),
+		);
+	});
+
+	test("emits app-server errors when protocol says Codex will not retry", async () => {
+		const manager = new CodexAppServerManager();
+		const events: Array<Record<string, unknown>> = [];
+		const capturingEmitter = createSidecarEmitter((event) => {
+			events.push(event as Record<string, unknown>);
+		});
+
+		serverState.beforeTurnCompleted = () => {
+			serverState.onNotification?.({
+				method: "error",
+				params: {
+					error: { message: "fatal app-server failure" },
+					willRetry: false,
+					threadId: "thread-1",
+					turnId: "turn-1",
+				},
+			});
+		};
+
+		await manager.sendMessage(
+			"REQ-terminal-error",
+			{
+				sessionId: "session-terminal-error",
+				prompt: "hi",
+				model: "gpt-5.4",
+				cwd: "/tmp",
+				resume: undefined,
+				permissionMode: undefined,
+				effortLevel: "medium",
+				fastMode: false,
+			},
+			capturingEmitter,
+		);
+
+		expect(events).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: "REQ-terminal-error",
+					type: "error",
+					message: "fatal app-server failure",
+				}),
+			]),
+		);
+	});
 });

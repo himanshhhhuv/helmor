@@ -2318,6 +2318,7 @@ function AppShell({
 												/>
 											)}
 											<div
+												data-focus-scope="chat"
 												className={
 													workspaceViewMode === "editor"
 														? "hidden"
